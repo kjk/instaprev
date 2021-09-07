@@ -32,6 +32,7 @@ const allowedExts = {
     "png": true,
     "jpeg": true,
     "jpg": true,
+    "gif": true,
     "webp": true,
     "xml": true,
     "avif": true,

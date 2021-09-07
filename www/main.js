@@ -32,6 +32,7 @@ const allowedExts = {
     "css": true,
     "php": true,
     "txt": true,
+    "json": true,
     "md": true,
     "markdown": true,
     "png": true,
@@ -44,8 +45,8 @@ const allowedExts = {
 }
 
 // TODO: maybe switch to a blacklist e.g. ".exe" files etc.
-function allowedFile(file) {
-    let name = file.name.toLowerCase();
+function allowedFile(name) {
+    name = name.toLowerCase();
     //let type = file.type;
     let parts = name.split(".");
     let n = len(parts)
@@ -180,45 +181,55 @@ async function getAllFileEntries(dataTransferItemList) {
     return fileEntries;
 }
 
-function filterFiles(files) {
-    let toSubmit = [];
-    let toSkip = [];
-    for (const f of files) {
-        if (!allowedFile(f)) {
-            toSkip.push(f);
-            continue;
-        }
-        toSubmit.push(f);
+// filesWIthPath is []{ file, path }
+async function uploadFiles(filesWithPath) {
+    // sort by size so that if we skip files due to crossing total size limit,
+    // we'll skip the largest files
+    function cmpBySize(fwp1, fwp2) {
+        const size1 = fwp1.file.size;
+        const size2 = fwp2.file.size;
+        return size1 - size2;
     }
-    return {
-        toSubmit: toSubmit,
-        toSkip: toSkip,
-    }
-}
-
-async function handleFiles(files) {
+    filesWithPath.sort(cmpBySize);
     let formData = new FormData();
     let totalSize = 0;
-    let nFiles = 0;
+    let nUploading = 0;
     let nSkipping = 0;
-    for (let file of files) {
+    for (const fileWithPath of filesWithPath) {
+        let file = fileWithPath.file;
+        let name = fileWithPath.path;
+        if (!allowedFile(name)) {
+            nSkipping++;
+            console.log(`Skipping upload of '${name}' ${humanizeSize(file.size)} because file type not supported`);
+            continue;
+        }
         if (file.size > maxFileSize) {
+            console.log(`Skipping upload of '${name}' ${humanizeSize(file.size)}`);
             nSkipping++;
             continue;
         }
         if (totalSize + file.size > maxUploadSize) {
             nSkipping++;
+            console.log(`Skipping upload of '${name}' ${humanizeSize(file.size)} because total size would exceed max total size of ${humanizeSize(maxTotalSize)}`);
             continue;
         }
-        formData.append(file.name, file);
+        // console.log(`Uploading '${name}' ('${file.name}') ${humanizeSize(file.size)}`);
+        formData.append(name, file);
         totalSize += file.size;
-        nFiles++;
+        nUploading++;
     }
-    let msg = `Uploading ${nFiles} files`;
+    if (nUploading == 0) {
+        showError(`No files to upload out of ${len(filesWithPath)}`);
+        return;
+    }
+    hideError();
+
+    let msg = `Uploading ${nUploading} files, ${humanizeSize(totalSize)}`;
     if (nSkipping > 0) {
         msg += `, skipping ${nSkipping} not supported files`;
     }
     showStatus(msg);
+
     const timeStart = +new Date();
     try {
         const rsp = await fetch(uploadURL, {
@@ -232,71 +243,44 @@ async function handleFiles(files) {
         let uri = await rsp.text();
         const dur = formatDurSince(timeStart);
         const totalSizeStr = humanizeSize(totalSize);
-        showStatus(`Uploaded ${nFiles} ${plural(nFiles, "file")} of size ${totalSizeStr} in ${dur}. View at <a href="${uri}" target="_blank">${uri}</a>.<br>Will expire in about 2 hrs.`);
+        showStatus(`<p>Uploaded ${nUploading} ${plural(nUploading, "file")}, ${totalSizeStr} in ${dur}. View at <a href="${uri}" target="_blank">${uri}</a>.</p><p>Will expire in about 2 hrs.</p>`);
     } catch {
         showError("Failed to upload files");
     }
 }
 
+async function handleFiles(files) {
+    let filesWithPath = [];
+    for (const file of files) {
+        let fileWithPath = {
+            file: file,
+            path: file.name,
+        }
+        filesWithPath.push(fileWithPath);
+    }
+    uploadFiles(filesWithPath);
+}
+
+
 async function handleDrop(e) {
     preventDefaults(e);
 
     let dt = e.dataTransfer
-    let files = await getAllFileEntries(dt.items);
-    let res = filterFiles(files);
-    let toSkip = res.toSkip;
-    let toSubmit = res.toSubmit;
-    console.log(`toSubmit: $ {len(toSubmit)}, toSkip: $ {len(toSkip)}`);
-    if (len(toSubmit) == 0) {
-        showError(`no files to submit out of ${len(files)}`);
-        return;
-    }
-    hideError();
-    let formData = new FormData();
-    let totalSize = 0;
-    let nFiles = 0;
-    let nSkipping = len(toSkip);
-    for (let fileEntry of toSubmit) {
-        let path = fileEntry.fullPath;
+    let fileEntries = await getAllFileEntries(dt.items);
+    // convert to File objects
+    let filesWithPath = [];
+    for (let fe of fileEntries) {
+        let path = fe.fullPath;
         let file = await new Promise((resolve, reject) => {
-            fileEntry.file(resolve, reject);
+            fe.file(resolve, reject);
         })
-        if (file.size > maxFileSize) {
-            console.log(`Skipping upload of file "%s" of size ${humanizeSize(file.size)}`);
-            nSkipping++;
-            continue;
+        let fileWithPath = {
+            file: file,
+            path: path,
         }
-        if (totalSize + file.size > maxUploadSize) {
-            console.log(`Skipping upload of file '%s' of size ${humanizeSize(file.size)} because total size would exceed max total size of ${humanizeSize(maxTotalSize)}`);
-            nSkipping++;
-            continue;
-        }
-
-        totalSize += file.size;
-        formData.append(path, file);
-        nFiles++;
+        filesWithPath.push(fileWithPath);
     }
-    let msg = `Uploading ${nFiles} files`;
-    if (nSkipping > 0) {
-        msg += `, skipping ${nSkipping} not supported files`;
-    }
-    showStatus(msg);
-    const timeStart = +new Date();
-    try {
-        const rsp = await fetch(uploadURL, {
-            method: 'POST',
-            body: formData,
-        });
-        if (rsp.status != 200) {
-            showError(`Failed to upload files. /api/upload failed with status code ${rsp.status}`);
-            return;
-        }
-        const uri = await rsp.text();
-        const dur = formatDurSince(timeStart);
-        showStatus(`Uploaded ${nFiles} files in ${dur}. View at <a href="${uri}" target="_blank">${uri}</a>.<br>Will expire in about 2 hrs.`);
-    } catch {
-        showError("Failed to upload files");
-    }
+    uploadFiles(filesWithPath);
 }
 
 function formatDurSince(timeStart) {

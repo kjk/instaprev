@@ -50,6 +50,46 @@ function allowedFile(file) {
     return allowedExts[ext];
 }
 
+function onId(id, f) {
+    const el = document.getElementById(id);
+    if (!el) {
+        console.log("onId: no element with id:", id);
+        return;
+    }
+    f(el);
+}
+
+function showById(id) {
+    onId(id, el => el.style.display = "block");
+}
+
+function hideById(id) {
+    onId(id, el => el.style.display = "none");
+}
+
+function showError(msg) {
+    onId("upload-error", el => {
+        el.style.display = "block";
+        el.textContent = msg;
+    })
+    hideStatus();
+}
+
+function hideError() {
+    hideById("upload-error");
+}
+
+function hideStatus() {
+    hideById("upload-status");
+}
+
+function showStatus(msg) {
+    onId("upload-status", el => {
+        el.style.display = "block";
+        el.textContent = msg;
+    })
+}
+
 // Wrap readEntries in a promise to make working with readEntries easier
 async function readEntriesPromise(directoryReader) {
     try {
@@ -108,30 +148,29 @@ function filterFiles(files) {
     }
 }
 
-
-async function uploadFiles(files) {
+async function uploadFormData(formData) {
     let uploadURL = "/api/upload";
-    let formData = new FormData();
-    for (let file of files) {
-        let name = "";
-        if (file.isFile) {
-            name = file.full
-            file = file.file();
-
-        }
-
-        formData.append(file.eventName, file);
-    }
-
     try {
-        await fetch(uploadURL, {
+        const rsp = await fetch(uploadURL, {
             method: 'POST',
             body: formData,
-        })
-        console.log("uploaded files");
+        });
+        if (rsp.status != 200) {
+            showError(`failed to upload files. /api/upload failed with status code ${rsp.status}`);
+            return;
+        }
+        showStatus("uploaded files");
     } catch {
-        console.log("failed to upload");
+        showError("failed to upload files");
     }
+}
+
+async function uploadFiles(files) {
+    let formData = new FormData();
+    for (let file of files) {
+        formData.append(file.eventName, file);
+    }
+    uploadFormData(formData);
 }
 
 async function handleFiles(files) {
@@ -140,56 +179,40 @@ async function handleFiles(files) {
     }
 }
 
-function onId(id, f) {
-    const el = document.getElementById(id);
-    if (!el) {
-        console.log("onId: no element with id:", id);
-        return;
-    }
-    f(el);
-}
-
-function showById(id) {
-    onId(id, el => el.style.display = "block");
-}
-
-function hideById(id) {
-    onId(id, el => el.style.display = "none");
-}
-
-function showError(msg) {
-    onId("upload-error", el => {
-        el.style.display = "block";
-        el.textContent = msg;
-    })
-}
-
 async function handleDrop(e) {
+    preventDefaults(e);
+
     let dt = e.dataTransfer
     console.log("handleDrop: items", dt.items);
     let files = await getAllFileEntries(dt.items);
     let res = filterFiles(files);
     let toSkip = res.toSkip;
     let toSubmit = res.toSubmit;
+    console.log(`toSubmit: ${len(toSubmit)}, toSkip: ${len(toSkip)}`);
     if (len(toSubmit) == 0) {
         showError(`no files to submit out of ${len(files)}`);
         return;
     }
-    hideById("upload-error");
-    showById("list-uploading-wrap");
-    onId("list-uploading", ul => {
-        for (let file of toSubmit) {
-            let li = mkel("li");
-            li.textContent = file.name;
-            ul.append(li);
-        }
-    })
-    if (len(toSkip) > 0) {
-        hideById("list-not-uploading-wrap")
-    } else {
-        hideById("list-not-uploading-wrap")
+    const nFileLimit = 50;
+    if (len(toSubmit) > nFileLimit) {
+        showError("Too many files. Limit is ${nFileLimit}, got ${len(toSubmit)}");
+        return;
     }
-    console.log(`toSubmit: ${len(toSubmit)}, toSkip: ${len(toSkip)}`);
+    hideError();
+    let msg = `Uploading ${len(toSubmit)} files.`;
+    if (len(toSkip) > 0) {
+        msg += ` Skipping ${len(toSkip)} files (not html / css / js / image files)`;
+    }
+    showStatus(msg);
+    let formData = new FormData();
+    for (let fileEntry of toSubmit) {
+        let path = fileEntry.fullPath;
+        let file = await new Promise((resolve, reject) => {
+            fileEntry.file(resolve, reject);
+        })
+        formData.append(path, file);
+    }
+    uploadFormData(formData);
 }
 
 function highlight(e) {

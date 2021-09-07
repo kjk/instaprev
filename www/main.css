@@ -72,11 +72,11 @@ body {
     justify-content: center;
 }
 
-#list-uploading-wrap {
+#uploading-wrap {
     display: none;
 }
 
-#list-not-uploading-wrap {
+#not-uploading-wrap {
     display: none;
 }
 

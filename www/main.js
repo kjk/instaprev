@@ -86,7 +86,8 @@ function hideStatus() {
 function showStatus(msg) {
     onId("upload-status", el => {
         el.style.display = "block";
-        el.textContent = msg;
+        //el.textContent = msg;
+        el.innerHTML = msg;
     })
 }
 
@@ -159,7 +160,8 @@ async function uploadFormData(formData) {
             showError(`failed to upload files. /api/upload failed with status code ${rsp.status}`);
             return;
         }
-        showStatus("uploaded files");
+        let uri = await rsp.text();
+        showStatus(`Uploaded files. You can view it at <a href="${uri}">${uri}</a>`);
     } catch {
         showError("failed to upload files");
     }
@@ -195,7 +197,7 @@ async function handleDrop(e) {
     }
     const nFileLimit = 50;
     if (len(toSubmit) > nFileLimit) {
-        showError("Too many files. Limit is ${nFileLimit}, got ${len(toSubmit)}");
+        showError(`Too many files. Limit is ${nFileLimit}, got ${len(toSubmit)}`);
         return;
     }
     hideError();
@@ -207,6 +209,7 @@ async function handleDrop(e) {
     let formData = new FormData();
     for (let fileEntry of toSubmit) {
         let path = fileEntry.fullPath;
+        console.log("appending:", path);
         let file = await new Promise((resolve, reject) => {
             fileEntry.file(resolve, reject);
         })

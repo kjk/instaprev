@@ -304,6 +304,7 @@ func servePathInSite(w http.ResponseWriter, r *http.Request, path string, site *
 	if rest == "" {
 		// TODO: maybe also add query params etc.
 		newURL := path + "/"
+		logf(r.Context(), "servePathInSite: redirecting '%s' to '%s'\n", path, newURL)
 		http.Redirect(w, r, newURL, http.StatusTemporaryRedirect) // 307
 		return
 	}
@@ -366,23 +367,43 @@ func handleIndex(w http.ResponseWriter, r *http.Request) {
 	if strings.HasPrefix(path, "/api/site-files.json") {
 		handleAPISiteFiles(w, r)
 	}
-	// if uploaded files use absolute urls, they'll have incorrect paths
-	// we try to overcome by deducing from referer which site this request was meant to
 	referer := r.Header.Get("referer")
-	if referer != "" {
-		path := strings.TrimPrefix(referer, "https://")
-		parts := strings.Split(path, "/")
-		path = "/" + strings.Join(parts, "/")
-		logf(r.Context(), "handleIndex: referer: '%s', path: '%s'\n", referer, path)
-		site := findSiteByPath(path)
-		if site != nil {
-			servePathInSite(w, r, path, site)
-			return
-		}
+	redirectURL := siteRedirectForPath(referer, r)
+	if redirectURL != "" {
+		logf(r.Context(), "httpIndex: redirectng '%s' => '%s'\n", path, redirectURL)
+		http.Redirect(w, r, redirectURL, http.StatusTemporaryRedirect)
+		return
 	}
 
+	// assuming those are our own html files
 	logf(r.Context(), "handleIndex: '%s'\n", r.URL)
 	serveFile(w, r, "www", path)
+}
+
+// if uploaded files use absolute urls, they'll have incorrect paths on
+// our server
+// we try to deduce from referer which site this request was meant to
+// this builds the url on our site or "" if nothing is matching
+func siteRedirectForPath(referer string, r *http.Request) string {
+	// referer is a full URL https://${host}${path}
+	// extract ${path}
+	if referer == "" {
+		return ""
+	}
+	logf(r.Context(), "siteRedirectForPath: '%s', host: '%s'\n", r.URL, r.Host)
+	idx := strings.Index(referer, r.Host)
+	if idx == -1 {
+		return ""
+	}
+	path := referer[idx+len(r.Host):]
+	logf(r.Context(), "siteRedirectForPath: path from referer: '%s', host: '%s'\n", path, r.Host)
+	site := findSiteByPath(path)
+	if site == nil {
+		return ""
+	}
+	newURL := "/p/" + site.token + path
+	logf(r.Context(), "siteRedirectForPath: path: '%s', newURL: '%s'\n", path, newURL)
+	return newURL
 }
 
 func doRunServer() {

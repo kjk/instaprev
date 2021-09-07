@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"os"
 	"os/signal"
@@ -23,9 +23,10 @@ const (
 )
 
 type siteFile struct {
-	Path    string
-	Size    int64
-	content []byte
+	Path       string
+	Size       int64
+	pathOnDisk string
+	pathInForm string
 }
 
 // describes a single website
@@ -33,15 +34,27 @@ type Site struct {
 	token     string
 	createdOn time.Time
 	totalSize int64
-	files     []siteFile
+	files     []*siteFile
 	filePaths []string
 }
 
 var (
-	flgHTTPPort = 5550
-	sites       []*Site
-	muSites     sync.Mutex
+	flgHTTPPort   = 5550
+	sites         []*Site
+	muSites       sync.Mutex
+	dataDirCached string
 )
+
+func getDataDir() string {
+	if dataDirCached != "" {
+		return dataDirCached
+	}
+	dataDirCached = "data"
+	// remove stale files for sites
+	os.RemoveAll(dataDirCached)
+	must(os.MkdirAll(dataDirCached, 0755))
+	return dataDirCached
+}
 
 // when dropping a directory, all files have common prefix, which we want to remove
 func trimCommonPrefix(a []string) {
@@ -135,64 +148,89 @@ func handleAPISummary(w http.ResponseWriter, r *http.Request) {
 
 // POST /api/upload
 func handleUpload(w http.ResponseWriter, r *http.Request) {
+	token := generateToken(tokenLength)
+	dir := filepath.Join(getDataDir(), token)
 	ct := r.Header.Get("content-type")
-	logf(r.Context(), "handleUpload: '%s', Content-Type: '%s'\n", r.URL, ct)
+	logf(r.Context(), "handleUpload: '%s', Content-Type: '%s', token: '%s', dir: '%s'\n", r.URL, ct, token, dir)
 	err := r.ParseMultipartForm(maxSize10Mb)
 	if err != nil {
 		logf(r.Context(), "handleUpload: r.ParseMultipartForm() failed with '%s'\n", err)
 		http.NotFound(w, r)
 		return
 	}
+
 	form := r.MultipartForm
 	totalSize := int64(0)
-	files := []siteFile{}
+	files := []*siteFile{}
+	defer form.RemoveAll()
+
+	// first collect info about file names so that we can trim common prefix
+	paths := []string{}
 	for path, fileHeaders := range form.File {
+		// windows => unix pathname
+		pathCanonical := strings.Replace(path, "\\", "/", -1)
+		pathCanonical = strings.TrimPrefix(pathCanonical, "/")
 		// if there are multiple files with the same name we only use first
 		fh := fileHeaders[0]
-		pathCanonical := strings.TrimPrefix(path, "/")
-		// windows => unix pathname
-		pathCanonical = strings.Replace(pathCanonical, "\\", "/", -1)
-		file := siteFile{
-			Path: pathCanonical,
-			Size: fh.Size,
+		file := &siteFile{
+			Path:       pathCanonical,
+			Size:       fh.Size,
+			pathInForm: path,
 		}
-		fr, err := fh.Open()
-		if err != nil {
-			logf(r.Context(), "handleUpload: fh.Open() on '%s' failed with '%s'\n", path, err)
-			http.NotFound(w, r)
-			return
-		}
-		d, err := ioutil.ReadAll(fr)
-		if err != nil {
-			logf(r.Context(), "handleUpload: ioutil.ReadAll() on '%s' failed with '%s'\n", path, err)
-			http.NotFound(w, r)
-			return
-		}
-		fr.Close()
-		file.content = d
-		files = append(files, file)
 		totalSize += fh.Size
-		logf(r.Context(), "handleUpload: file '%s' (canonical: '%s'), name: '%s' of size %s\n", path, pathCanonical, fh.Filename, humanizeSize(fh.Size))
+		files = append(files, file)
+		paths = append(paths, pathCanonical)
 	}
-	logf(r.Context(), "handleUpload: %d files of total size %s\n", len(files), humanizeSize(totalSize))
 	if len(files) == 0 {
 		http.NotFound(w, r)
 		return
 	}
-
-	paths := []string{}
-	{
-		for _, f := range files {
-			paths = append(paths, f.Path)
-			totalSize += f.Size
-		}
-		trimCommonPrefix(paths)
-		for i := 0; i < len(files); i++ {
-			files[i].Path = paths[i]
-		}
+	trimCommonPrefix(paths)
+	for i := 0; i < len(files); i++ {
+		files[i].Path = paths[i]
+		files[i].pathOnDisk = filepath.Join(dir, files[i].Path)
 	}
+	for _, file := range files {
+		fh := form.File[file.pathInForm][0]
+		fr, err := fh.Open()
+		if err != nil {
+			logf(r.Context(), "handleUpload: fh.Open() on '%s' failed with '%s'\n", file.pathInForm, err)
+			http.NotFound(w, r)
+			return
+		}
+		pathOnDisk := file.pathOnDisk
+		if err != nil {
+			logf(r.Context(), "handleUpload: os.MkdirAll('%s') failed with '%s'\n", filepath.Dir(pathOnDisk), err)
+			fr.Close()
+			http.NotFound(w, r)
+			return
+		}
+		err = os.MkdirAll(filepath.Dir(pathOnDisk), 0755)
+		if err != nil {
+			logf(r.Context(), "handleUpload: os.MkdirAll('%s') failed with '%s'\n", filepath.Dir(pathOnDisk), err)
+			fr.Close()
+			http.NotFound(w, r)
+			return
+		}
+		fw, err := os.Create(pathOnDisk)
+		if err != nil {
+			logf(r.Context(), "handleUpload: os.Create('%s') failed with '%s'\n", pathOnDisk, err)
+			fr.Close()
+			http.NotFound(w, r)
+			return
+		}
+		_, err = io.Copy(fw, fr)
+		if err != nil {
+			logf(r.Context(), "handleUpload: io.Copy() on '%s' failed with '%s'\n", pathOnDisk, err)
+			http.NotFound(w, r)
+			return
+		}
+		fr.Close()
+		totalSize += fh.Size
+		logf(r.Context(), "handleUpload: file '%s' (canonical: '%s'), name: '%s' of size %s saved as '%s'\n", file.pathInForm, file.Path, fh.Filename, humanizeSize(fh.Size), pathOnDisk)
+	}
+	logf(r.Context(), "handleUpload: %d files of total size %s\n", len(files), humanizeSize(totalSize))
 
-	token := generateToken(tokenLength)
 	site := &Site{
 		token:     token,
 		createdOn: time.Now(),
@@ -216,6 +254,7 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 }
 
 func expireSitesLoop() {
+	dataDir := getDataDir()
 	for {
 		time.Sleep(time.Hour)
 		var newSites []*Site
@@ -226,6 +265,9 @@ func expireSitesLoop() {
 			if elapsed < timeTwoHours {
 				newSites = append(newSites, site)
 			} else {
+				dir := filepath.Join(dataDir, site.token)
+				os.RemoveAll(dir)
+				logf(ctx(), "expired site '%s' and deleted directory '%s'\n", site.token, dir)
 				nExpired++
 			}
 		}
@@ -269,7 +311,7 @@ func servePathInSite(w http.ResponseWriter, r *http.Request, path string, site *
 	findFileByPath := func() *siteFile {
 		for _, f := range site.files {
 			if f.Path == path {
-				return &f
+				return f
 			}
 		}
 		return nil
@@ -279,9 +321,7 @@ func servePathInSite(w http.ResponseWriter, r *http.Request, path string, site *
 		http.NotFound(w, r)
 		return
 	}
-	fr := bytes.NewReader(file.content)
-	http.ServeContent(w, r, file.Path, site.createdOn, fr)
-
+	http.ServeFile(w, r, file.pathOnDisk)
 }
 
 // GET /p/${token}/${path}
@@ -361,7 +401,7 @@ func doRunServer() {
 	}
 	httpSrv.Addr = httpAddr
 	ctx := ctx()
-	logf(ctx, "Starting server on %s\n", httpAddr)
+	logf(ctx, "Starting server on %s, data dir: '%s'\n", httpAddr, getDataDir())
 	chServerClosed := make(chan bool, 1)
 	go func() {
 		err := httpSrv.ListenAndServe()

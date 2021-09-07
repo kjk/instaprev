@@ -174,18 +174,12 @@ async function uploadFormData(formData) {
     }
 }
 
-async function uploadFiles(files) {
+async function handleFiles(files) {
     let formData = new FormData();
     for (let file of files) {
         formData.append(file.eventName, file);
     }
     uploadFormData(formData);
-}
-
-async function handleFiles(files) {
-    for (const file of files) {
-        console.log(file);
-    }
 }
 
 async function handleDrop(e) {

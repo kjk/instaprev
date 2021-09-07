@@ -24,10 +24,10 @@
 
         <div id="drop-area">
             <form class="upload-form" method="post" action="" enctype="miltipart/format-data">
-                <p>Upload multiple files with the file dialog or by dragging and dropping images onto the dashed region
+                <p>To upload for instant preview, drag & drop: a file, multiple files, folder or a ZIP file. Or use the button below.
                 </p>
                 <input type="file" id="fileElem" multiple onchange="handleFiles(this.files)">
-                <label class="select-files-button" for="fileElem">Select some files</label>
+                <label class="select-files-button" for="fileElem">Select files for upload</label>
             </form>
         </div>
 
@@ -36,7 +36,7 @@
         <div id="upload-error">
         </div>
 
-        <div id="summary" x-show="data" x-data="{ data: null }" x-init="data = await loadSummary()">
+        <div id="summary" x-show="data" x-data="{ data: {} }" x-init="data = await loadSummary()">
             Serving
             <span x-text="data.SitesCount"></span>
             sites of total size <span x-text="data.SitesSizeStr"></span>

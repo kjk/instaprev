@@ -34,12 +34,16 @@ func humanizeSize(i int64) string {
 		kb = 1024
 		mb = kb * 1024
 		gb = mb * 1024
+		tb = gb * 1024
 	)
 	fs := func(n int64, d float64, size string) string {
 		s := fmt.Sprintf("%.2f", float64(n)/d)
 		return strings.TrimSuffix(s, ".00") + " " + size
 	}
 
+	if i > tb {
+		return fs(i, tb, "TB")
+	}
 	if i > gb {
 		return fs(i, gb, "GB")
 	}
@@ -49,5 +53,5 @@ func humanizeSize(i int64) string {
 	if i > kb {
 		return fs(i, kb, "kB")
 	}
-	return fmt.Sprintf("%d bytes", i)
+	return fmt.Sprintf("%d B", i)
 }

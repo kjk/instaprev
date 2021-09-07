@@ -1,6 +1,8 @@
 let dropArea;
 
-let mkel = document.createElement;
+function mkel(s) {
+    return document.createElement(s);
+}
 
 function len(o) {
     if (!o || !o.length) {
@@ -31,6 +33,8 @@ const allowedExts = {
     "jpeg": true,
     "jpg": true,
     "webp": true,
+    "xml": true,
+    "avif": true,
 }
 
 function allowedFile(file) {
@@ -57,15 +61,12 @@ async function readEntriesPromise(directoryReader) {
     }
 }
 
-// Get all the entries (files or sub-directories) in a directory by calling readEntries until it returns empty array
-async function readAllDirectoryEntries(directoryReader) {
-    let res = [];
+async function collectAllDirectoryEntries(directoryReader, queue) {
     let readEntries = await readEntriesPromise(directoryReader);
     while (readEntries.length > 0) {
-        res.push(...readEntries);
+        queue.push(...readEntries);
         readEntries = await readEntriesPromise(directoryReader);
     }
-    return res;
 }
 
 async function getAllFileEntries(dataTransferItemList) {
@@ -83,21 +84,42 @@ async function getAllFileEntries(dataTransferItemList) {
             fileEntries.push(entry);
         } else if (entry.isDirectory) {
             let reader = entry.createReader();
-            let e = await readAllDirectoryEntries(reader)
-            queue.push(...e);
+            await collectAllDirectoryEntries(reader, queue);
         }
     }
     return fileEntries;
 }
 
-async function handleFiles(files) {
-    for (const file of files) {
-        console.log(file);
+function filterFiles(files) {
+    let toSubmit = [];
+    let toSkip = [];
+    for (const f of files) {
+        if (!allowedFile(f)) {
+            toSkip.push(f);
+            continue;
+        }
+        toSubmit.push(f);
+        //console.log("size:", f.size());
+        //totalSize += f.size;
     }
+    return {
+        toSubmit: toSubmit,
+        toSkip: toSkip,
+    }
+}
 
+
+async function uploadFiles(files) {
     let uploadURL = "/api/upload";
     let formData = new FormData();
-    for (const file of files) {
+    for (let file of files) {
+        let name = "";
+        if (file.isFile) {
+            name = file.full
+            file = file.file();
+
+        }
+
         formData.append(file.eventName, file);
     }
 
@@ -112,27 +134,62 @@ async function handleFiles(files) {
     }
 }
 
+async function handleFiles(files) {
+    for (const file of files) {
+        console.log(file);
+    }
+}
+
+function onId(id, f) {
+    const el = document.getElementById(id);
+    if (!el) {
+        console.log("onId: no element with id:", id);
+        return;
+    }
+    f(el);
+}
+
+function showById(id) {
+    onId(id, el => el.style.display = "block");
+}
+
+function hideById(id) {
+    onId(id, el => el.style.display = "none");
+}
+
+function showError(msg) {
+    onId("upload-error", el => {
+        el.style.display = "block";
+        el.textContent = msg;
+    })
+}
+
 async function handleDrop(e) {
     let dt = e.dataTransfer
     console.log("handleDrop: items", dt.items);
-    let allFiles = await getAllFileEntries(dt.items);
-    let totalSize = 0;
-    let toSubmit = [];
-    let toSkip = [];
-    for (const f of allFiles) {
-        if (f.isDirectory) {
-            console.log("directory:", f);
-            continue;
-        }
-        if (!allowedFile(f)) {
-            toSkip.push(f);
-            continue;
-        }
-        toSubmit.push(f);
-        //console.log("size:", f.size());
-        //totalSize += f.size;
+    let files = await getAllFileEntries(dt.items);
+    let res = filterFiles(files);
+    let toSkip = res.toSkip;
+    let toSubmit = res.toSubmit;
+    if (len(toSubmit) == 0) {
+        showError(`no files to submit out of ${len(files)}`);
+        return;
     }
-    console.log(`toSubmit: ${len(toSubmit)}, toSkip: ${len(toSkip)}, totalSize: ${totalSize}`);
+    hideById("upload-error");
+    showById("list-uploading-wrap");
+    onId("list-uploading", ul => {
+        for (let file of toSubmit) {
+            let li = mkel("li");
+            li.textContent = file.name;
+            ul.append(li);
+        }
+    })
+    if (len(toSkip) > 0) {
+        hideById("list-not-uploading-wrap")
+    } else {
+        hideById("list-not-uploading-wrap")
+    }
+    console.log(`toSubmit: ${len(toSubmit)}, toSkip: ${len(toSkip)}`);
 }
 
 function highlight(e) {

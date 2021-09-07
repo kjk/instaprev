@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -22,8 +23,8 @@ const (
 )
 
 type siteFile struct {
-	path    string
-	size    int64
+	Path    string
+	Size    int64
 	content []byte
 }
 
@@ -31,6 +32,7 @@ type siteFile struct {
 type Site struct {
 	token     string
 	createdOn time.Time
+	totalSize int64
 	files     []siteFile
 	filePaths []string
 }
@@ -80,6 +82,58 @@ func trimCommonPrefix(a []string) {
 	}
 }
 
+func serveJSON(w http.ResponseWriter, r *http.Request, v interface{}) {
+	d, err := json.Marshal(v)
+	if err != nil {
+		logf(r.Context(), "serveJSON: json.Marshal() failed with '%s'\n", err)
+		http.NotFound(w, r)
+		return
+	}
+	http.ServeContent(w, r, "foo.json", time.Now(), bytes.NewReader(d))
+}
+
+// GET /api/summary.json?token=${token}
+func handleAPISiteFiles(w http.ResponseWriter, r *http.Request) {
+	token := r.FormValue("token")
+	logf(r.Context(), "handleAPISiteFiles: '%s', token: '%s'\n", r.URL, token)
+	if token == "" {
+		http.NotFound(w, r)
+		return
+	}
+	site := findSiteByToken(token)
+	if site == nil {
+		http.NotFound(w, r)
+		return
+	}
+	serveJSON(w, r, site.files)
+}
+
+// GET /api/summary.json
+func handleAPISummary(w http.ResponseWriter, r *http.Request) {
+	logf(r.Context(), "handleAPISummary: '%s'\n", r.URL)
+	sitesCount := 0
+	sitesSize := int64(0)
+	{
+		muSites.Lock()
+		sitesCount = len(sites)
+		for _, site := range sites {
+			sitesSize += site.totalSize
+		}
+		muSites.Unlock()
+	}
+	summary := struct {
+		SitesCount   int
+		SitesSize    int64
+		SitesSizeStr string
+	}{
+		SitesCount:   sitesCount,
+		SitesSize:    sitesSize,
+		SitesSizeStr: humanizeSize(sitesSize),
+	}
+	serveJSON(w, r, summary)
+}
+
+// POST /api/upload
 func handleUpload(w http.ResponseWriter, r *http.Request) {
 	ct := r.Header.Get("content-type")
 	logf(r.Context(), "handleUpload: '%s', Content-Type: '%s'\n", r.URL, ct)
@@ -99,8 +153,8 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 		// windows => unix pathname
 		pathCanonical = strings.Replace(pathCanonical, "\\", "/", -1)
 		file := siteFile{
-			path: pathCanonical,
-			size: fh.Size,
+			Path: pathCanonical,
+			Size: fh.Size,
 		}
 		fr, err := fh.Open()
 		if err != nil {
@@ -129,11 +183,12 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 	paths := []string{}
 	{
 		for _, f := range files {
-			paths = append(paths, f.path)
+			paths = append(paths, f.Path)
+			totalSize += f.Size
 		}
 		trimCommonPrefix(paths)
 		for i := 0; i < len(files); i++ {
-			files[i].path = paths[i]
+			files[i].Path = paths[i]
 		}
 	}
 
@@ -143,6 +198,7 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 		createdOn: time.Now(),
 		files:     files,
 		filePaths: paths,
+		totalSize: totalSize,
 	}
 	muSites.Lock()
 	sites = append(sites, site)
@@ -153,7 +209,7 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 		uri = fmt.Sprintf("https://%s/p/%s/", r.Host, token)
 	} else {
 		f := files[0]
-		uri = fmt.Sprintf("https://%s/p/%s/%s", r.Host, token, f.path)
+		uri = fmt.Sprintf("https://%s/p/%s/%s", r.Host, token, f.Path)
 	}
 	rsp := bytes.NewReader([]byte(uri))
 	http.ServeContent(w, r, "result.txt", time.Now(), rsp)
@@ -179,13 +235,7 @@ func expireSitesLoop() {
 	}
 }
 
-func findSiteByPath(path string) *Site {
-	path = strings.TrimPrefix(path, "/p/")
-	// extract token
-	if len(path) < 6 {
-		return nil
-	}
-	token := path[:6]
+func findSiteByToken(token string) *Site {
 	muSites.Lock()
 	defer muSites.Unlock()
 	for _, site := range sites {
@@ -194,9 +244,19 @@ func findSiteByPath(path string) *Site {
 		}
 	}
 	return nil
+
+}
+func findSiteByPath(path string) *Site {
+	path = strings.TrimPrefix(path, "/p/")
+	// extract token
+	if len(path) < 6 {
+		return nil
+	}
+	token := path[:6]
+	return findSiteByToken(token)
 }
 
-// /p/${token}
+// GET /p/${token}
 func handlePreview(w http.ResponseWriter, r *http.Request) {
 	logf(r.Context(), "handlePreview: '%s'\n", r.URL)
 	path := r.URL.Path
@@ -217,7 +277,7 @@ func handlePreview(w http.ResponseWriter, r *http.Request) {
 	logf(r.Context(), "handlePreview: path: '%s', files: %v\n", path, site.filePaths)
 	findFileByPath := func() *siteFile {
 		for _, f := range site.files {
-			if f.path == path {
+			if f.Path == path {
 				return &f
 			}
 		}
@@ -229,7 +289,7 @@ func handlePreview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	fr := bytes.NewReader(file.content)
-	http.ServeContent(w, r, file.path, site.createdOn, fr)
+	http.ServeContent(w, r, file.Path, site.createdOn, fr)
 }
 
 func serveFile(w http.ResponseWriter, r *http.Request, dir string, uriPath string) {
@@ -252,6 +312,13 @@ func handleIndex(w http.ResponseWriter, r *http.Request) {
 	if strings.HasPrefix(path, "/api/upload") {
 		handleUpload(w, r)
 		return
+	}
+	if strings.HasPrefix(path, "/api/summary.json") {
+		handleAPISummary(w, r)
+		return
+	}
+	if strings.HasPrefix(path, "/api/site-files.json") {
+		handleAPISiteFiles(w, r)
 	}
 	referer := r.Header.Get("referer")
 	if referer != "" {

@@ -3,15 +3,15 @@
 
 <head>
     <link rel="stylesheet" href="main.css">
-    <script src="//unpkg.com/alpinejs" defer></script>
     <script src="main.js" defer></script>
+    <script src="//unpkg.com/alpinejs" defer></script>
 </head>
 
 <body onload="onload()">
     <div id="body-wrapper">
         <div>
             <p>
-                Welcome to <span style=" font-weight: bold; color: slategrey;">Insta</span>nt <span style="font-weight: bold; color: slategrey;">Prev</span>iew for HTML files.
+                Welcome to <span style=" font-weight: bold; color: saddlebrown;">Instant</span> <span style="font-weight: bold; color: saddlebrown;">Preview</span> for HTML files.
             </p>
             <p>
                 Upload a single .html files or a .zip file with html / css / javascript
@@ -34,6 +34,12 @@
         <div id="upload-status">
         </div>
         <div id="upload-error">
+        </div>
+
+        <div id="summary" x-show="data" x-data="{ data: null }" x-init="data = await loadSummary()">
+            Serving
+            <span x-text="data.SitesCount"></span>
+            sites of total size <span x-text="data.SitesSizeStr"></span>
         </div>
     </div>
 </body>

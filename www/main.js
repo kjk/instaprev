@@ -249,3 +249,15 @@ function onload() {
 
     dropArea.addEventListener('drop', handleDrop, false)
 }
+
+async function loadSummary() {
+    console.log("loadSummary");
+    let rsp = await fetch("/api/summary.json");
+    let js = await rsp.json();
+    console.log("loadSummary:", js);
+    return js;
+}
+
+function onload404Site() {
+    console.log("onload404Site()");
+}

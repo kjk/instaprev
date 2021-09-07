@@ -91,6 +91,14 @@ function showStatus(msg) {
     })
 }
 
+function highlight(e) {
+    dropArea.classList.add('highlight')
+}
+
+function unhighlight(e) {
+    dropArea.classList.remove('highlight')
+}
+
 // Wrap readEntries in a promise to make working with readEntries easier
 async function readEntriesPromise(directoryReader) {
     try {
@@ -140,8 +148,6 @@ function filterFiles(files) {
             continue;
         }
         toSubmit.push(f);
-        //console.log("size:", f.size());
-        //totalSize += f.size;
     }
     return {
         toSubmit: toSubmit,
@@ -185,12 +191,11 @@ async function handleDrop(e) {
     preventDefaults(e);
 
     let dt = e.dataTransfer
-    console.log("handleDrop: items", dt.items);
     let files = await getAllFileEntries(dt.items);
     let res = filterFiles(files);
     let toSkip = res.toSkip;
     let toSubmit = res.toSubmit;
-    console.log(`toSubmit: ${len(toSubmit)}, toSkip: ${len(toSkip)}`);
+    // console.log(`toSubmit: ${len(toSubmit)}, toSkip: ${len(toSkip)}`);
     if (len(toSubmit) == 0) {
         showError(`no files to submit out of ${len(files)}`);
         return;
@@ -209,7 +214,6 @@ async function handleDrop(e) {
     let formData = new FormData();
     for (let fileEntry of toSubmit) {
         let path = fileEntry.fullPath;
-        console.log("appending:", path);
         let file = await new Promise((resolve, reject) => {
             fileEntry.file(resolve, reject);
         })
@@ -218,31 +222,17 @@ async function handleDrop(e) {
     uploadFormData(formData);
 }
 
-function highlight(e) {
-    dropArea.classList.add('highlight')
-}
-
-function unhighlight(e) {
-    dropArea.classList.remove('highlight')
-}
-
 function preventDefaultsOnElement(el) {
-    //console.log("preventDefaultsOnElement", el);
     ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
         el.addEventListener(eventName, preventDefaults, false)
     })
 }
 
 function onload() {
-    console.log("onload");
-
     // prevent dropping files on body from allowing
     // browser to display the file
     // preventDefaultsOnElement(document.body);
     preventDefaultsOnElement(document.getElementById("body-wrapper"));
-
-    //$form = document.getElementsByClassName('my-form')[0];
-    //console.log($form);
 
     dropArea = getDropContainerElement();
     preventDefaultsOnElement(dropArea);
@@ -251,9 +241,11 @@ function onload() {
         dropArea.addEventListener(eventName, highlight, false);
     })
 
+    // TODO: why a.forEach() doesn't work
     let a = ["dragleave", "drop"];
     a.forEach(eventName => {
         dropArea.addEventListener(eventName, unhighlight, false);
     })
+
     dropArea.addEventListener('drop', handleDrop, false)
 }

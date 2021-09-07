@@ -32,6 +32,7 @@ type Site struct {
 	token     string
 	createdOn time.Time
 	files     []siteFile
+	filePaths []string
 }
 
 var (
@@ -62,18 +63,18 @@ func trimCommonPrefix(a []string) {
 		}
 		return true
 	}
-	i := 0
+	idx := 0
 	for {
-		if isSameCharAt(i) {
-			i++
+		if isSameCharAt(idx) {
+			idx++
 			continue
 		}
-		if i == 0 {
+		if idx == 0 {
 			return
 		}
 		// logf(ctx(), "removing common prefix '%s'\n", a[0][:i])
 		for i, s := range a {
-			a[i] = s[i:]
+			a[i] = s[idx:]
 		}
 		return
 	}
@@ -125,8 +126,8 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	paths := []string{}
 	{
-		paths := []string{}
 		for _, f := range files {
 			paths = append(paths, f.path)
 		}
@@ -141,6 +142,7 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 		token:     token,
 		createdOn: time.Now(),
 		files:     files,
+		filePaths: paths,
 	}
 	muSites.Lock()
 	sites = append(sites, site)
@@ -177,10 +179,57 @@ func expireSitesLoop() {
 	}
 }
 
+func findSiteByPath(path string) *Site {
+	path = strings.TrimPrefix(path, "/p/")
+	// extract token
+	if len(path) < 6 {
+		return nil
+	}
+	token := path[:6]
+	muSites.Lock()
+	defer muSites.Unlock()
+	for _, site := range sites {
+		if site.token == token {
+			return site
+		}
+	}
+	return nil
+}
+
+// /p/${token}
 func handlePreview(w http.ResponseWriter, r *http.Request) {
-	// TODO: implement me
 	logf(r.Context(), "handlePreview: '%s'\n", r.URL)
-	http.NotFound(w, r)
+	path := r.URL.Path
+	site := findSiteByPath(path)
+	if site == nil {
+		logf(r.Context(), "handlePreview: didn't find site\n")
+		http.NotFound(w, r)
+		return
+	}
+	rest := path[6:]
+	if rest == "" {
+		// TODO: maybe also add query params etc.
+		newURL := path + "/"
+		http.Redirect(w, r, newURL, http.StatusTemporaryRedirect) // 307
+		return
+	}
+	path = strings.TrimPrefix(rest, "/")
+	logf(r.Context(), "handlePreview: path: '%s', files: %v\n", path, site.filePaths)
+	findFileByPath := func() *siteFile {
+		for _, f := range site.files {
+			if f.path == path {
+				return &f
+			}
+		}
+		return nil
+	}
+	file := findFileByPath()
+	if file == nil {
+		http.NotFound(w, r)
+		return
+	}
+	fr := bytes.NewReader(file.content)
+	http.ServeContent(w, r, file.path, site.createdOn, fr)
 }
 
 func serveFile(w http.ResponseWriter, r *http.Request, dir string, uriPath string) {
@@ -204,6 +253,12 @@ func handleIndex(w http.ResponseWriter, r *http.Request) {
 		handleUpload(w, r)
 		return
 	}
+	referer := r.Header.Get("referer")
+	if referer != "" {
+		logf(r.Context(), "handleIndex: referer: '%s'\n", referer)
+		//site := findSiteByPath(referer)
+	}
+
 	logf(r.Context(), "handleIndex: '%s'\n", r.URL)
 	serveFile(w, r, "www", path)
 }

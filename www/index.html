@@ -9,7 +9,7 @@
 
 <body onload="onload()">
     <div id="body-wrapper">
-        <div style="margin-left: 1em; margin-right: 1em">
+        <div>
             <p>
                 Welcome to <span style=" font-weight: bold; color: slategrey;">Insta</span>nt <span style="font-weight: bold; color: slategrey;">Prev</span>iew for HTML files.
             </p>
@@ -22,14 +22,15 @@
             </p>
         </div>
 
-        <div style="margin-left: 1em; margin-right: 1em" id="drop-area">
-            <form class="my-form" method="post" action="" enctype="miltipart/format-data">
+        <div id="drop-area">
+            <form class="upload-form" method="post" action="" enctype="miltipart/format-data">
                 <p>Upload multiple files with the file dialog or by dragging and dropping images onto the dashed region
                 </p>
                 <input type="file" id="fileElem" multiple onchange="handleFiles(this.files)">
                 <label class="select-files-button" for="fileElem">Select some files</label>
             </form>
         </div>
+
         <div id="upload-status">
         </div>
         <div id="upload-error">

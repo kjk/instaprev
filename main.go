@@ -308,17 +308,29 @@ func servePathInSite(w http.ResponseWriter, r *http.Request, path string, site *
 		http.Redirect(w, r, newURL, http.StatusTemporaryRedirect) // 307
 		return
 	}
-	path = strings.TrimPrefix(rest, "/")
-	logf(r.Context(), "servePathInSite: path: '%s', files: %v\n", path, site.filePaths)
+	toFind := strings.TrimPrefix(rest, "/")
+	if toFind == "" {
+		if len(site.filePaths) == 1 {
+			toFind = site.files[0].Path
+		} else {
+			toFind = "index.html"
+		}
+	}
+	logf(r.Context(), "servePathInSite: path: '%s', rest: '%s', toFind: '%s'\n", path, rest, toFind)
+	toFind2 := toFind + ".html" // also serve clean urls with ".html" stripped off
 	findFileByPath := func() *siteFile {
 		for _, f := range site.files {
-			if f.Path == path {
+			if f.Path == toFind {
+				return f
+			}
+			if f.Path == toFind2 {
 				return f
 			}
 		}
 		return nil
 	}
 	file := findFileByPath()
+	// TODO: serve a listing of files
 	if file == nil {
 		http.NotFound(w, r)
 		return
@@ -401,8 +413,9 @@ func siteRedirectForPath(referer string, r *http.Request) string {
 	if site == nil {
 		return ""
 	}
-	newURL := "/p/" + site.token + path
-	logf(r.Context(), "siteRedirectForPath: path: '%s', newURL: '%s'\n", path, newURL)
+	// TODO: add query params and hash
+	newURL := "/p/" + site.token + r.URL.Path
+	logf(r.Context(), "siteRedirectForPath: path: '%s', newURL: '%s', r.URL.RawQuery: '%s'\n", path, newURL, r.URL.RawQuery)
 	return newURL
 }
 

@@ -1,5 +1,9 @@
 let dropArea;
 
+// how many files can we upload in one go
+// TODO: maybe make it based on total size
+const nFileLimit = 250;
+
 function mkel(s) {
     return document.createElement(s);
 }
@@ -195,15 +199,14 @@ async function handleDrop(e) {
         showError(`no files to submit out of ${len(files)}`);
         return;
     }
-    const nFileLimit = 50;
     if (len(toSubmit) > nFileLimit) {
         showError(`Too many files. Limit is ${nFileLimit}, got ${len(toSubmit)}`);
         return;
     }
     hideError();
-    let msg = `Uploading ${len(toSubmit)} files.`;
+    let msg = `Uploading ${len(toSubmit)} files`;
     if (len(toSkip) > 0) {
-        msg += ` Skipping ${len(toSkip)} files (not html / css / js / image files)`;
+        msg += `, skipping ${len(toSkip)} not supported files`;
     }
     showStatus(msg);
     let formData = new FormData();
@@ -246,10 +249,9 @@ function onload() {
 }
 
 async function loadSummary() {
-    console.log("loadSummary");
     let rsp = await fetch("/api/summary.json");
     let js = await rsp.json();
-    console.log("loadSummary:", js);
+    //console.log("loadSummary:", js);
     return js;
 }
 

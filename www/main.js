@@ -1,67 +1,132 @@
-function disableDragDrop(evt) {
-    evt.preventDefault();
-    evt.stopPropagation();
+let dropArea;
 
-    console.log("disableDragDrop");
+function preventDefaults(e) {
+    // console.log("preventDefaults");
+    e.preventDefault()
+    e.stopPropagation()
 }
 
-function onDragEnter(evt) {
-    console.log("onDragEnter");
-
-    evt.preventDefault();
-    evt.stopPropagation();
-
-    const el = document.getElementById("dropContainer")
-    el.classList.add("is-dragover");
+function getDropContainerElement() {
+    return document.getElementById("drop-area")
 }
 
-function onDragOver(evt) {
-    console.log("onDragOver");
-
-    evt.preventDefault();
-    evt.stopPropagation();
+function allowedFile(file) {
+    let name = file.name;
+    let type = file.type;
 }
 
-function onDrop(evt) {
-    console.log("onDrop");
-    evt.preventDefault();
-    evt.stopPropagation();
+async function getAllFileEntries(dataTransferItemList) {
+    let fileEntries = [];
+    // Use BFS to traverse entire directory/file structure
+    let queue = [];
+    // Unfortunately dataTransferItemList is not iterable i.e. no forEach
+    let n = dataTransferItemList.length;
+    for (let i = 0; i < n; i++) {
+        let item = dataTransferItemList[i];
+        let entry = item.webkitGetAsEntry();
+        console.log(entry);
+        queue.push(entry);
+    }
+    while (queue.length > 0) {
+        let entry = queue.shift();
+        if (entry.isFile) {
+            fileEntries.push(entry);
+        } else if (entry.isDirectory) {
+            let reader = entry.createReader();
+            let entries = await readAllDirectoryEntries(reader)
+            queue.push(...entries);
+        }
+    }
+    return fileEntries;
+}
 
-    const dt = evt.dataTransfer;
-    const n = dt.files.length;
-    console.log(`onDrop: ${n} files`);
+// Get all the entries (files or sub-directories) in a directory by calling readEntries until it returns empty array
+async function readAllDirectoryEntries(directoryReader) {
+    let entries = [];
+    let readEntries = await readEntriesPromise(directoryReader);
+    while (readEntries.length > 0) {
+        entries.push(...readEntries);
+        readEntries = await readEntriesPromise(directoryReader);
+    }
+    return entries;
+}
 
-    for (const file of dt.files) {
+// Wrap readEntries in a promise to make working with readEntries easier
+async function readEntriesPromise(directoryReader) {
+    try {
+        return await new Promise((resolve, reject) => {
+            directoryReader.readEntries(resolve, reject);
+        });
+    } catch (err) {
+        console.log(err);
+    }
+}
+
+async function handleFiles(files) {
+    for (const file of files) {
         console.log(file);
     }
-    // pretty simple -- but not for IE :(
-    fileInput.files = evt.dataTransfer.files;
 
-    /*
-    // If you want to use some of the dropped files
-    const dT = new DataTransfer();
-    dT.items.add(evt.dataTransfer.files[0]);
-    dT.items.add(evt.dataTransfer.files[3]);
-    fileInput.files = dT.files;
-    */
+    let uploadURL = "/api/upload";
+    let formData = new FormData();
+    for (const file of files) {
+        formData.append(file.eventName, file);
+    }
 
-    const el = document.getElementById("dropContainer")
-    el.classList.remove("is-dragover");
-};
+    try {
+        await fetch(uploadURL, {
+            method: 'POST',
+            body: formData,
+        })
+        console.log("uploaded files");
+    } catch {
+        console.log("failed to upload");
+    }
+}
+
+async function handleDrop(e) {
+    let dt = e.dataTransfer
+    console.log("handleDrop: items", dt.items);
+    let files = await getAllFileEntries(dt.items);
+    console.log("handleDrop: files:", files);
+}
+
+function highlight(e) {
+    dropArea.classList.add('highlight')
+}
+
+function unhighlight(e) {
+    dropArea.classList.remove('highlight')
+}
+
+function preventDefaultsOnElement(el) {
+    console.log("preventDefaultsOnElement", el);
+    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+        el.addEventListener(eventName, preventDefaults, false)
+    })
+}
 
 function onload() {
     console.log("onload");
 
     // prevent dropping files on body from allowing
     // browser to display the file
-    let dropContainer = document.body;
-    dropContainer.ondragover = disableDragDrop;
-    dropContainer.ondragenter = disableDragDrop;
-    dropContainer.ondrop = disableDragDrop;
+    // preventDefaultsOnElement(document.body);
+    preventDefaultsOnElement(document.getElementById("body-wrapper"));
 
+    //$form = document.getElementsByClassName('my-form')[0];
+    //console.log($form);
 
-    dropContainer = document.getElementById("dropContainer")
-    dropContainer.ondragover = onDragOver;
-    dropContainer.ondragenter = onDragEnter;
-    dropContainer.ondrop = onDrop;
+    dropArea = getDropContainerElement();
+    preventDefaultsOnElement(dropArea);
+
+    ['dragenter', 'dragover'].forEach(eventName => {
+        dropArea.addEventListener(eventName, highlight, false);
+    })
+
+    let a = ["dragleave", "drop"];
+    a.forEach(eventName => {
+        dropArea.addEventListener(eventName, unhighlight, false);
+    })
+    dropArea.addEventListener('drop', handleDrop, false)
 }

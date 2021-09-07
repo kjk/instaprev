@@ -8,27 +8,28 @@
 </head>
 
 <body onload="onload()">
-    <p>
-        Welcome to <span style=" font-weight: bold; color: slategrey;">Insta</span>nt <span style="font-weight: bold; color: slategrey;">Prev</span>iew for HTML files.
-    </p>
-    <p>
-        Upload a single .html files or a .zip file with html / css / javascript
-        files to get an instant, temporary preview.
-    </p>
-    <p>
-        The files are deleted after 2-3 hrs.
-    </p>
-    <div id="dropContainer">
-        drop files here
-    </div>
-    <div>
-        <div>
-            Files:
+    <div id="body-wrapper">
+        <p>
+            Welcome to <span style=" font-weight: bold; color: slategrey;">Insta</span>nt <span style="font-weight: bold; color: slategrey;">Prev</span>iew for HTML files.
+        </p>
+        <p>
+            Upload a single .html files or a .zip file with html / css / javascript
+            files to get an instant, temporary preview.
+        </p>
+        <p>
+            The files are deleted after 2-3 hrs.
+        </p>
+
+        <div id="drop-area">
+            <form class="my-form" method="post" action="" enctype="miltipart/format-data">
+                <p>Upload multiple files with the file dialog or by dragging and dropping images onto the dashed region
+                </p>
+                <input type="file" id="fileElem" multiple onchange="handleFiles(this.files)">
+                <label class="select-files-button" for="fileElem">Select some files</label>
+            </form>
         </div>
-        <input type="file" id="fileInput" />
+
     </div>
 </body>
-
-</html>
 
 </html>

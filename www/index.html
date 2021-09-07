@@ -11,20 +11,22 @@
     <div id="body-wrapper">
         <div>
             <p>
-                Welcome to <span style=" font-weight: bold; color: saddlebrown;">Instant</span> <span style="font-weight: bold; color: saddlebrown;">Preview</span> for HTML files.
+                Welcome to <span style=" font-weight: bold; color: saddlebrown;">Instant</span> <span style="font-weight: bold; color: saddlebrown;">Preview</span> for HTML files, made by <a href="https://blog.kowalczyk.info/contactme.html" target="_blank">kjk</a>.
             </p>
             <p>
-                Upload a single .html files or a .zip file with html / css / javascript
-                files to get an instant, temporary preview.
+                Get an instant, temporary preview of html files or websites.
             </p>
             <p>
-                The files will be deleted after ~2 hrs.
+                Upload a single .html file, a bunch of files, a directory or a .zip file with html / css / javascript.
+            </p>
+            <p>
+                The files are private (hosted under random, un-guessable url) and will be deleted after ~2 hrs.
             </p>
         </div>
 
         <div id="drop-area">
             <form class="upload-form" method="post" action="" enctype="miltipart/format-data">
-                <p>To upload for instant preview, drag & drop: a file, multiple files, folder or a ZIP file. Or use the button below.
+                <p>To upload for instant preview, drag & drop: a file, multiple files, folder or a ZIP file. Or use button below to select files for upload.
                 </p>
                 <input type="file" id="fileElem" multiple onchange="handleFiles(this.files)">
                 <label class="select-files-button" for="fileElem">Select files for upload</label>

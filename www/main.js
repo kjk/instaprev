@@ -1,8 +1,8 @@
 let dropArea;
 
-// how many files can we upload in one go
-// TODO: maybe make it based on total size
-const nFileLimit = 250;
+const uploadURL = "/api/upload";
+const maxFileSize = 1024 * 1024 * 5; // 5 MB
+const maxUploadSize = 1024 * 1024 * 10; // 10 MB
 
 function mkel(s) {
     return document.createElement(s);
@@ -30,6 +30,7 @@ const allowedExts = {
     "htm": true,
     "js": true,
     "css": true,
+    "php": true,
     "txt": true,
     "md": true,
     "markdown": true,
@@ -42,6 +43,7 @@ const allowedExts = {
     "avif": true,
 }
 
+// TODO: maybe switch to a blacklist e.g. ".exe" files etc.
 function allowedFile(file) {
     let name = file.name.toLowerCase();
     //let type = file.type;
@@ -53,6 +55,40 @@ function allowedFile(file) {
     }
     ext = parts[n - 1];
     return allowedExts[ext];
+}
+
+// TODO: very primitive, doesn't work for every word
+function plural(n, s) {
+    if (n == 1) {
+        return s;
+    }
+    return s + "s";
+}
+
+function humanizeSize(i) {
+    const kb = 1024;
+    const mb = kb * 1024;
+    const gb = mb * 1024;
+    const tb = gb * 1024;
+
+    function fs(n, d, size) {
+        let s = (n / d).toFixed(2);
+        s = s.replace(".00", "") + " " + size;
+        return s;
+    }
+    if (i > tb) {
+        return fs(i, tb, "TB");
+    }
+    if (i > gb) {
+        return fs(i, gb, "GB")
+    }
+    if (i > mb) {
+        return fs(i, mb, "MB")
+    }
+    if (i > kb) {
+        return fs(i, kb, "kB")
+    }
+    return `${i} B`;
 }
 
 function onId(id, f) {
@@ -160,30 +196,46 @@ function filterFiles(files) {
     }
 }
 
-async function uploadFormData(formData) {
-    let uploadURL = "/api/upload";
+async function handleFiles(files) {
+    let formData = new FormData();
+    let totalSize = 0;
+    let nFiles = 0;
+    let nSkipping = 0;
+    for (let file of files) {
+        if (file.size > maxFileSize) {
+            nSkipping++;
+            continue;
+        }
+        if (totalSize + file.size > maxUploadSize) {
+            nSkipping++;
+            continue;
+        }
+        formData.append(file.name, file);
+        totalSize += file.size;
+        nFiles++;
+    }
+    let msg = `Uploading ${nFiles} files`;
+    if (nSkipping > 0) {
+        msg += `, skipping ${nSkipping} not supported files`;
+    }
+    showStatus(msg);
+    const timeStart = +new Date();
     try {
         const rsp = await fetch(uploadURL, {
             method: 'POST',
             body: formData,
         });
         if (rsp.status != 200) {
-            showError(`failed to upload files. /api/upload failed with status code ${rsp.status}`);
+            showError(`Failed to upload files. /api/upload failed with status code ${rsp.status}`);
             return;
         }
         let uri = await rsp.text();
-        showStatus(`Uploaded files. View at <a href="${uri}" target="_blank">${uri}</a>. Will expire in about 2 hrs.`);
+        const dur = formatDurSince(timeStart);
+        const totalSizeStr = humanizeSize(totalSize);
+        showStatus(`Uploaded ${nFiles} ${plural(nFiles, "file")} of size ${totalSizeStr} in ${dur}. View at <a href="${uri}" target="_blank">${uri}</a>.<br>Will expire in about 2 hrs.`);
     } catch {
-        showError("failed to upload files");
+        showError("Failed to upload files");
     }
-}
-
-async function handleFiles(files) {
-    let formData = new FormData();
-    for (let file of files) {
-        formData.append(file.name, file);
-    }
-    uploadFormData(formData);
 }
 
 async function handleDrop(e) {
@@ -194,30 +246,72 @@ async function handleDrop(e) {
     let res = filterFiles(files);
     let toSkip = res.toSkip;
     let toSubmit = res.toSubmit;
-    // console.log(`toSubmit: ${len(toSubmit)}, toSkip: ${len(toSkip)}`);
+    console.log(`toSubmit: $ {len(toSubmit)}, toSkip: $ {len(toSkip)}`);
     if (len(toSubmit) == 0) {
         showError(`no files to submit out of ${len(files)}`);
         return;
     }
-    if (len(toSubmit) > nFileLimit) {
-        showError(`Too many files. Limit is ${nFileLimit}, got ${len(toSubmit)}`);
-        return;
-    }
     hideError();
-    let msg = `Uploading ${len(toSubmit)} files`;
-    if (len(toSkip) > 0) {
-        msg += `, skipping ${len(toSkip)} not supported files`;
-    }
-    showStatus(msg);
     let formData = new FormData();
+    let totalSize = 0;
+    let nFiles = 0;
+    let nSkipping = len(toSkip);
     for (let fileEntry of toSubmit) {
         let path = fileEntry.fullPath;
         let file = await new Promise((resolve, reject) => {
             fileEntry.file(resolve, reject);
         })
+        if (file.size > maxFileSize) {
+            console.log(`Skipping upload of file "%s" of size ${humanizeSize(file.size)}`);
+            nSkipping++;
+            continue;
+        }
+        if (totalSize + file.size > maxUploadSize) {
+            console.log(`Skipping upload of file '%s' of size ${humanizeSize(file.size)} because total size would exceed max total size of ${humanizeSize(maxTotalSize)}`);
+            nSkipping++;
+            continue;
+        }
+
+        totalSize += file.size;
         formData.append(path, file);
+        nFiles++;
     }
-    uploadFormData(formData);
+    let msg = `Uploading ${nFiles} files`;
+    if (nSkipping > 0) {
+        msg += `, skipping ${nSkipping} not supported files`;
+    }
+    showStatus(msg);
+    const timeStart = +new Date();
+    try {
+        const rsp = await fetch(uploadURL, {
+            method: 'POST',
+            body: formData,
+        });
+        if (rsp.status != 200) {
+            showError(`Failed to upload files. /api/upload failed with status code ${rsp.status}`);
+            return;
+        }
+        const uri = await rsp.text();
+        const dur = formatDurSince(timeStart);
+        showStatus(`Uploaded ${nFiles} files in ${dur}. View at <a href="${uri}" target="_blank">${uri}</a>.<br>Will expire in about 2 hrs.`);
+    } catch {
+        showError("Failed to upload files");
+    }
+}
+
+function formatDurSince(timeStart) {
+    const end = +new Date();
+    const durMs = end - timeStart;
+    return formatDur(durMs);
+}
+
+function formatDur(durMs) {
+    if (durMs < 1000) {
+        return `${durMs} ms`;
+    }
+    let secs = (durMs / 1000).toFixed(2);
+    secs = secs.replace(".00", "");
+    return `${secs} s`;
 }
 
 function preventDefaultsOnElement(el) {

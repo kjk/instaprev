@@ -1,5 +1,14 @@
 let dropArea;
 
+let mkel = document.createElement;
+
+function len(o) {
+    if (!o || !o.length) {
+        return 0;
+    }
+    return o.length;
+}
+
 function preventDefaults(e) {
     // console.log("preventDefaults");
     e.preventDefault()
@@ -10,45 +19,31 @@ function getDropContainerElement() {
     return document.getElementById("drop-area")
 }
 
+const allowedExts = {
+    "html": true,
+    "htm": true,
+    "js": true,
+    "css": true,
+    "txt": true,
+    "md": true,
+    "markdown": true,
+    "png": true,
+    "jpeg": true,
+    "jpg": true,
+    "webp": true,
+}
+
 function allowedFile(file) {
-    let name = file.name;
-    let type = file.type;
-}
-
-async function getAllFileEntries(dataTransferItemList) {
-    let fileEntries = [];
-    // Use BFS to traverse entire directory/file structure
-    let queue = [];
-    // Unfortunately dataTransferItemList is not iterable i.e. no forEach
-    let n = dataTransferItemList.length;
-    for (let i = 0; i < n; i++) {
-        let item = dataTransferItemList[i];
-        let entry = item.webkitGetAsEntry();
-        console.log(entry);
-        queue.push(entry);
+    let name = file.name.toLowerCase();
+    //let type = file.type;
+    let parts = name.split(".");
+    let n = len(parts)
+    if (n == 1) {
+        // no extension
+        return false;
     }
-    while (queue.length > 0) {
-        let entry = queue.shift();
-        if (entry.isFile) {
-            fileEntries.push(entry);
-        } else if (entry.isDirectory) {
-            let reader = entry.createReader();
-            let entries = await readAllDirectoryEntries(reader)
-            queue.push(...entries);
-        }
-    }
-    return fileEntries;
-}
-
-// Get all the entries (files or sub-directories) in a directory by calling readEntries until it returns empty array
-async function readAllDirectoryEntries(directoryReader) {
-    let entries = [];
-    let readEntries = await readEntriesPromise(directoryReader);
-    while (readEntries.length > 0) {
-        entries.push(...readEntries);
-        readEntries = await readEntriesPromise(directoryReader);
-    }
-    return entries;
+    ext = parts[n - 1];
+    return allowedExts[ext];
 }
 
 // Wrap readEntries in a promise to make working with readEntries easier
@@ -60,6 +55,39 @@ async function readEntriesPromise(directoryReader) {
     } catch (err) {
         console.log(err);
     }
+}
+
+// Get all the entries (files or sub-directories) in a directory by calling readEntries until it returns empty array
+async function readAllDirectoryEntries(directoryReader) {
+    let res = [];
+    let readEntries = await readEntriesPromise(directoryReader);
+    while (readEntries.length > 0) {
+        res.push(...readEntries);
+        readEntries = await readEntriesPromise(directoryReader);
+    }
+    return res;
+}
+
+async function getAllFileEntries(dataTransferItemList) {
+    let fileEntries = [];
+    let queue = [];
+    let n = dataTransferItemList.length;
+    for (let i = 0; i < n; i++) {
+        let item = dataTransferItemList[i];
+        let entry = item.webkitGetAsEntry();
+        queue.push(entry);
+    }
+    while (len(queue) > 0) {
+        let entry = queue.shift();
+        if (entry.isFile) {
+            fileEntries.push(entry);
+        } else if (entry.isDirectory) {
+            let reader = entry.createReader();
+            let e = await readAllDirectoryEntries(reader)
+            queue.push(...e);
+        }
+    }
+    return fileEntries;
 }
 
 async function handleFiles(files) {
@@ -87,8 +115,24 @@ async function handleFiles(files) {
 async function handleDrop(e) {
     let dt = e.dataTransfer
     console.log("handleDrop: items", dt.items);
-    let files = await getAllFileEntries(dt.items);
-    console.log("handleDrop: files:", files);
+    let allFiles = await getAllFileEntries(dt.items);
+    let totalSize = 0;
+    let toSubmit = [];
+    let toSkip = [];
+    for (const f of allFiles) {
+        if (f.isDirectory) {
+            console.log("directory:", f);
+            continue;
+        }
+        if (!allowedFile(f)) {
+            toSkip.push(f);
+            continue;
+        }
+        toSubmit.push(f);
+        //console.log("size:", f.size());
+        //totalSize += f.size;
+    }
+    console.log(`toSubmit: ${len(toSubmit)}, toSkip: ${len(toSkip)}, totalSize: ${totalSize}`);
 }
 
 function highlight(e) {
@@ -100,7 +144,7 @@ function unhighlight(e) {
 }
 
 function preventDefaultsOnElement(el) {
-    console.log("preventDefaultsOnElement", el);
+    //console.log("preventDefaultsOnElement", el);
     ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
         el.addEventListener(eventName, preventDefaults, false)
     })

@@ -146,6 +146,7 @@ func handleAPISummary(w http.ResponseWriter, r *http.Request) {
 	serveJSON(w, r, summary)
 }
 
+// POST /upload
 // POST /api/upload
 func handleUpload(w http.ResponseWriter, r *http.Request) {
 	token := generateToken(tokenLength)
@@ -354,7 +355,7 @@ func handleIndex(w http.ResponseWriter, r *http.Request) {
 		handlePreview(w, r)
 		return
 	}
-	if strings.HasPrefix(path, "/api/upload") {
+	if strings.HasPrefix(path, "/api/upload") || strings.HasPrefix(path, "/upload") {
 		handleUpload(w, r)
 		return
 	}

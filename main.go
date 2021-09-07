@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -28,18 +29,29 @@ func handlePreview(w http.ResponseWriter, r *http.Request) {
 	http.NotFound(w, r)
 }
 
+func serveFile(w http.ResponseWriter, r *http.Request, dir string, uriPath string) {
+	logf(r.Context(), "serveFile: dir: '%s', uriPath: '%s'\n", dir, uriPath)
+	fileName := strings.TrimPrefix(uriPath, "/")
+	if fileName == "" {
+		fileName = "index.html"
+	}
+	// TODO: server 404.html if not found
+	path := filepath.Join(dir, uriPath)
+	http.ServeFile(w, r, path)
+}
+
 func handleIndex(w http.ResponseWriter, r *http.Request) {
-	uri := r.URL.Path
+	path := r.URL.Path
 	logf(r.Context(), "handleIndex: '%s'\n", r.URL)
-	if strings.HasPrefix(uri, "/p/") {
+	if strings.HasPrefix(path, "/p/") {
 		handlePreview(w, r)
 		return
 	}
-	if strings.HasPrefix(uri, "/api/upload") {
+	if strings.HasPrefix(path, "/api/upload") {
 		handleUpload(w, r)
 		return
 	}
-	http.NotFound(w, r)
+	serveFile(w, r, "www", path)
 }
 
 func doRunServer() {

@@ -1,0 +1,16 @@
+body {
+    background-color: #fcfcfc;
+    padding-top: 1em;
+}
+
+#dropContainer {
+    border: 1px dashed black;
+    height: 40vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.is-dragover {
+    background-color: lightcyan;
+}

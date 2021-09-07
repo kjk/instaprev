@@ -256,17 +256,8 @@ func findSiteByPath(path string) *Site {
 	return findSiteByToken(token)
 }
 
-// GET /p/${token}
-func handlePreview(w http.ResponseWriter, r *http.Request) {
-	logf(r.Context(), "handlePreview: '%s'\n", r.URL)
-	path := r.URL.Path
-	site := findSiteByPath(path)
-	if site == nil {
-		logf(r.Context(), "handlePreview: didn't find site\n")
-		http.NotFound(w, r)
-		return
-	}
-	rest := path[6:]
+func servePathInSite(w http.ResponseWriter, r *http.Request, path string, site *Site) {
+	rest := path[9:] // strip /p/${token}
 	if rest == "" {
 		// TODO: maybe also add query params etc.
 		newURL := path + "/"
@@ -274,7 +265,7 @@ func handlePreview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	path = strings.TrimPrefix(rest, "/")
-	logf(r.Context(), "handlePreview: path: '%s', files: %v\n", path, site.filePaths)
+	logf(r.Context(), "servePathInSite: path: '%s', files: %v\n", path, site.filePaths)
 	findFileByPath := func() *siteFile {
 		for _, f := range site.files {
 			if f.Path == path {
@@ -290,6 +281,20 @@ func handlePreview(w http.ResponseWriter, r *http.Request) {
 	}
 	fr := bytes.NewReader(file.content)
 	http.ServeContent(w, r, file.Path, site.createdOn, fr)
+
+}
+
+// GET /p/${token}/${path}
+func handlePreview(w http.ResponseWriter, r *http.Request) {
+	logf(r.Context(), "handlePreview: '%s'\n", r.URL)
+	path := r.URL.Path
+	site := findSiteByPath(path)
+	if site == nil {
+		logf(r.Context(), "handlePreview: didn't find site\n")
+		http.NotFound(w, r)
+		return
+	}
+	servePathInSite(w, r, path, site)
 }
 
 func serveFile(w http.ResponseWriter, r *http.Request, dir string, uriPath string) {
@@ -320,10 +325,19 @@ func handleIndex(w http.ResponseWriter, r *http.Request) {
 	if strings.HasPrefix(path, "/api/site-files.json") {
 		handleAPISiteFiles(w, r)
 	}
+	// if uploaded files use absolute urls, they'll have incorrect paths
+	// we try to overcome by deducing from referer which site this request was meant to
 	referer := r.Header.Get("referer")
 	if referer != "" {
-		logf(r.Context(), "handleIndex: referer: '%s'\n", referer)
-		//site := findSiteByPath(referer)
+		path := strings.TrimPrefix(referer, "https://")
+		parts := strings.Split(path, "/")
+		path = "/" + strings.Join(parts, "/")
+		logf(r.Context(), "handleIndex: referer: '%s', path: '%s'\n", referer, path)
+		site := findSiteByPath(path)
+		if site != nil {
+			servePathInSite(w, r, path, site)
+			return
+		}
 	}
 
 	logf(r.Context(), "handleIndex: '%s'\n", r.URL)

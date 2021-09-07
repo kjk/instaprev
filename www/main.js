@@ -168,7 +168,7 @@ async function uploadFormData(formData) {
             return;
         }
         let uri = await rsp.text();
-        showStatus(`Uploaded files. You can view it at <a href="${uri}">${uri}</a>`);
+        showStatus(`Uploaded files. View at <a href="${uri}" target="_blank">${uri}</a>. Will expire in about 2 hrs.`);
     } catch {
         showError("failed to upload files");
     }
@@ -177,7 +177,7 @@ async function uploadFormData(formData) {
 async function handleFiles(files) {
     let formData = new FormData();
     for (let file of files) {
-        formData.append(file.eventName, file);
+        formData.append(file.name, file);
     }
     uploadFormData(formData);
 }

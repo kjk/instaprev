@@ -102,7 +102,13 @@ func serveJSON(w http.ResponseWriter, r *http.Request, v interface{}) {
 		http.NotFound(w, r)
 		return
 	}
-	http.ServeContent(w, r, "foo.json", time.Now(), bytes.NewReader(d))
+	var zeroTime time.Time
+	http.ServeContent(w, r, "foo.json", zeroTime, bytes.NewReader(d))
+}
+
+func servePlainText(w http.ResponseWriter, r *http.Request, s string) {
+	var zeroTime time.Time
+	http.ServeContent(w, r, "foo.txt", zeroTime, bytes.NewReader([]byte(s)))
 }
 
 // GET /api/summary.json?token=${token}
@@ -372,12 +378,16 @@ func handleIndex(w http.ResponseWriter, r *http.Request) {
 		handleUpload(w, r)
 		return
 	}
-	if strings.HasPrefix(path, "/api/summary.json") {
+	if path == "/api/summary.json" {
 		handleAPISummary(w, r)
 		return
 	}
-	if strings.HasPrefix(path, "/api/site-files.json") {
+	if path == "/api/site-files.json" {
 		handleAPISiteFiles(w, r)
+		return
+	}
+	if path == "/ping" {
+		servePlainText(w, r, "pong")
 		return
 	}
 	referer := r.Header.Get("referer")

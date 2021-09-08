@@ -115,6 +115,31 @@ func handleAPISummary(w http.ResponseWriter, r *http.Request) {
 	serveJSON(w, r, summary)
 }
 
+type siteInfo struct {
+	Token     string
+	FileCount int
+	TotalSize int64
+}
+
+// GET /api/sites.json
+// TODO: protect with password
+func handleAPISites(w http.ResponseWriter, r *http.Request) {
+	logf(r.Context(), "handleAPISites: '%s'\n", r.URL)
+	v := []siteInfo{}
+
+	muSites.Lock()
+	for _, site := range sites {
+		si := siteInfo{
+			Token:     site.token,
+			FileCount: len(site.files),
+			TotalSize: site.totalSize,
+		}
+		v = append(v, si)
+	}
+	muSites.Unlock()
+	serveJSON(w, r, v)
+}
+
 // POST /upload
 // POST /api/upload
 func handleUpload(w http.ResponseWriter, r *http.Request) {
@@ -339,6 +364,10 @@ func handleIndex(w http.ResponseWriter, r *http.Request) {
 		handleAPISiteFiles(w, r)
 		return
 	}
+	if path == "/api/sites.json" {
+		handleAPISites(w, r)
+		return
+	}
 	if path == "/ping" {
 		servePlainText(w, r, "pong")
 		return
@@ -353,6 +382,11 @@ func handleIndex(w http.ResponseWriter, r *http.Request) {
 		fileName = "index.html"
 	}
 	filePath := filepath.Join(dir, uriPath)
+	if fileExists(filePath) {
+		http.ServeFile(w, r, filePath)
+		return
+	}
+	filePath += ".html"
 	if fileExists(filePath) {
 		http.ServeFile(w, r, filePath)
 		return
@@ -437,7 +471,9 @@ func doRunServer() {
 
 	if httpSrv != nil {
 		// Shutdown() needs a non-nil context
-		_ = httpSrv.Shutdown(ctx)
+		go func() {
+			_ = httpSrv.Shutdown(ctx)
+		}()
 		select {
 		case <-chServerClosed:
 			// do nothing

@@ -6,51 +6,39 @@
     <script src="//unpkg.com/alpinejs" defer></script>
     <script src="/main.js" defer></script>
     <script>
-        console.log("404site.html, window.location:", window.location);
-
         let token;
         async function initAlpine() {
             console.log("initAlpine");
             let uri = window.location;
-            token = uri.pathname.substr(3, 6);
-            let apiURL = `/api/site-files.json?token=${token}`;
+            let apiURL = `/api/sites.json`;
             Alpine.store('data', {
-                "files": [],
-                "token": token,
+                "sites": [],
                 async init() {
                     console.log("starting fetch:", apiURL);
                     let rsp = await fetch(apiURL);
                     let js = await rsp.json();
                     // console.log("js:", JSON.stringify(js, null, "  "))
                     function cmpByName(f1, f2) {
-                        let n1 = f1.Path.toLowerCase();
-                        let n2 = f2.Path.toLowerCase();
-                        if (n1 < n2) {
-                            return -1;
-                        }
-                        if (n1 > n2) {
-                            return 1;
-                        }
-                        return 0;
+                        let n1 = f1.TotalSize;
+                        let n2 = f2.TotalSize;
+                        return n1 - n2;
                     }
-                    js.sort(cmpByName);
-                    this.files = js;
+                    js.sort(cmpByTotalSize);
+                    this.sites = js;
                 }
             });
         }
 
-        function fileLink(file) {
-            let baseURL = `/p/${token}/`;
+        function siteLink(site) {
+            let baseURL = `/p/${site.Token}/`;
             let fullURL = baseURL + file.Path;
-            let html = `<a href="${fullURL}">${file.Path}</a>`;
+            let html = `<a href="${fullURL}">${site.Token}</a>`;
             return html;
         }
 
         function init() {
             console.log("init");
             let path = window.location.pathname;
-            const el = document.getElementById("fileId");
-            el.textContent = path;
         }
 
         window.addEventListener("DOMContentLoaded", init);
@@ -61,15 +49,16 @@
 <body>
     <div id="body-wrapper">
         <p>
-            File <span id="fileId"></span> not found on this site. Here's a list of files that do exist:
+            <a href="/">Home</a> / List of sites:
         </p>
         <div x-data>
             <table class="tblList">
-                <template x-for="file in $store.data.files">
+                <template x-for="site in $store.data.sites">
                     <tr>
-                        <td x-html="fileLink(file)">
+                        <td x-html="siteLink(site)">
                         </td>
-                        <td x-text="humanizeSize(file.Size)"></td>
+                        <td x-text="site.FileCount"></td>
+                        <td x-text=" humanizeSize(site.TotalSize)"></td>
                     </tr>
                 </template>
             </table>

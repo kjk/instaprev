@@ -17,8 +17,8 @@ import (
 )
 
 const (
-	tokenLength  = 6 // like transfer.sh
-	maxSize10Mb  = 1024 * 1024 * 10
+	tokenLength  = 6                // like transfer.sh
+	maxSize10Mb  = 1024 * 1024 * 20 // this is 10 MB in html front-end
 	timeTwoHours = time.Hour * 2
 )
 
@@ -56,45 +56,6 @@ func getDataDir() string {
 	return dataDirCached
 }
 
-// when dropping a directory, all files have common prefix, which we want to remove
-func trimCommonPrefix(a []string) {
-	if len(a) < 2 {
-		return
-	}
-	isSameCharAt := func(idx int) bool {
-		var c byte
-		for n, s := range a {
-			if idx >= len(s) {
-				return false
-			}
-			c2 := s[idx]
-			if n == 0 {
-				c = c2
-				continue
-			}
-			if c != c2 {
-				return false
-			}
-		}
-		return true
-	}
-	idx := 0
-	for {
-		if isSameCharAt(idx) {
-			idx++
-			continue
-		}
-		if idx == 0 {
-			return
-		}
-		// logf(ctx(), "removing common prefix '%s'\n", a[0][:i])
-		for i, s := range a {
-			a[i] = s[idx:]
-		}
-		return
-	}
-}
-
 func serveJSON(w http.ResponseWriter, r *http.Request, v interface{}) {
 	d, err := json.Marshal(v)
 	if err != nil {
@@ -102,6 +63,7 @@ func serveJSON(w http.ResponseWriter, r *http.Request, v interface{}) {
 		http.NotFound(w, r)
 		return
 	}
+	//logf(r.Context(), "serveJSON:\n%s\n", string(d))
 	var zeroTime time.Time
 	http.ServeContent(w, r, "foo.json", zeroTime, bytes.NewReader(d))
 }
@@ -111,7 +73,7 @@ func servePlainText(w http.ResponseWriter, r *http.Request, s string) {
 	http.ServeContent(w, r, "foo.txt", zeroTime, bytes.NewReader([]byte(s)))
 }
 
-// GET /api/summary.json?token=${token}
+// GET /api/site-files.json?token=${token}
 func handleAPISiteFiles(w http.ResponseWriter, r *http.Request) {
 	token := r.FormValue("token")
 	logf(r.Context(), "handleAPISiteFiles: '%s', token: '%s'\n", r.URL, token)
@@ -121,6 +83,7 @@ func handleAPISiteFiles(w http.ResponseWriter, r *http.Request) {
 	}
 	site := findSiteByToken(token)
 	if site == nil {
+		logf(r.Context(), "handleAPISiteFiles: didn't find site for token '%s'\n", token)
 		http.NotFound(w, r)
 		return
 	}
@@ -336,9 +299,10 @@ func servePathInSite(w http.ResponseWriter, r *http.Request, path string, site *
 		return nil
 	}
 	file := findFileByPath()
-	// TODO: serve a listing of files
 	if file == nil {
-		http.NotFound(w, r)
+		path404 := filepath.Join("www", "404site.html")
+		logf(r.Context(), "servePathInSite: file doesn't exist, serving '%s'\n", path404)
+		http.ServeFile(w, r, path404)
 		return
 	}
 	http.ServeFile(w, r, file.pathOnDisk)
@@ -358,14 +322,6 @@ func handlePreview(w http.ResponseWriter, r *http.Request) {
 }
 
 func serveFile(w http.ResponseWriter, r *http.Request, dir string, uriPath string) {
-	logf(r.Context(), "serveFile: dir: '%s', uriPath: '%s'\n", dir, uriPath)
-	fileName := strings.TrimPrefix(uriPath, "/")
-	if fileName == "" {
-		fileName = "index.html"
-	}
-	// TODO: server 404.html if not found
-	path := filepath.Join(dir, uriPath)
-	http.ServeFile(w, r, path)
 }
 
 func handleIndex(w http.ResponseWriter, r *http.Request) {
@@ -390,6 +346,20 @@ func handleIndex(w http.ResponseWriter, r *http.Request) {
 		servePlainText(w, r, "pong")
 		return
 	}
+
+	dir := "www"
+	uriPath := path
+	logf(r.Context(), "serveFile: dir: '%s', uriPath: '%s'\n", dir, uriPath)
+	fileName := strings.TrimPrefix(uriPath, "/")
+	if fileName == "" {
+		fileName = "index.html"
+	}
+	filePath := filepath.Join(dir, uriPath)
+	if fileExists(filePath) {
+		http.ServeFile(w, r, filePath)
+		return
+	}
+
 	referer := r.Header.Get("referer")
 	redirectURL := siteRedirectForPath(referer, r)
 	if redirectURL != "" {

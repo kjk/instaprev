@@ -325,7 +325,3 @@ async function loadSummary() {
     //console.log("loadSummary:", js);
     return js;
 }
-
-function onload404Site() {
-    console.log("onload404Site()");
-}

@@ -76,3 +76,12 @@ body {
 #summary {
     margin-top: 1em;
 }
+
+#fileId {
+    font-family: monospace;
+    font-weight: bold;
+}
+
+table.tblfileList>tr>td {
+    padding-right: 1em;
+}

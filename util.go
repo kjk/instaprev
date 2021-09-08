@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
 	"runtime"
 	"strings"
 )
@@ -54,4 +55,48 @@ func humanizeSize(i int64) string {
 		return fs(i, kb, "kB")
 	}
 	return fmt.Sprintf("%d B", i)
+}
+
+// when dropping a directory, all files have common prefix, which we want to remove
+func trimCommonPrefix(a []string) {
+	if len(a) < 2 {
+		return
+	}
+	isSameCharAt := func(idx int) bool {
+		var c byte
+		for n, s := range a {
+			if idx >= len(s) {
+				return false
+			}
+			c2 := s[idx]
+			if n == 0 {
+				c = c2
+				continue
+			}
+			if c != c2 {
+				return false
+			}
+		}
+		return true
+	}
+	idx := 0
+	for {
+		if isSameCharAt(idx) {
+			idx++
+			continue
+		}
+		if idx == 0 {
+			return
+		}
+		// logf(ctx(), "removing common prefix '%s'\n", a[0][:i])
+		for i, s := range a {
+			a[i] = s[idx:]
+		}
+		return
+	}
+}
+
+func fileExists(path string) bool {
+	_, err := os.Lstat(path)
+	return err == nil
 }

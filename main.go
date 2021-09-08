@@ -22,6 +22,20 @@ const (
 	timeTwoHours = time.Hour * 2
 )
 
+var blaclistedExt = []string{
+    "exe",
+    "mp4",
+    "avi",
+    "flv",
+    "mpg",
+    "mpeg",
+    "mov",
+    "mkv",
+    "wmv",
+    "dll",
+    "so",
+};
+
 type siteFile struct {
 	Path       string
 	Size       int64

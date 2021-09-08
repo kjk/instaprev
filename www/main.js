@@ -25,37 +25,30 @@ function getDropContainerElement() {
     return document.getElementById("drop-area")
 }
 
-const allowedExts = {
-    "html": true,
-    "htm": true,
-    "js": true,
-    "css": true,
-    "php": true,
-    "txt": true,
-    "json": true,
-    "md": true,
-    "markdown": true,
-    "png": true,
-    "jpeg": true,
-    "jpg": true,
-    "gif": true,
-    "webp": true,
-    "xml": true,
-    "avif": true,
-}
+const blaclistedExt = [
+    "exe",
+    "mp4",
+    "avi",
+    "flv",
+    "mpg",
+    "mpeg",
+    "mov",
+    "mkv",
+    "wmv",
+    "dll",
+    "so",
+];
 
-// TODO: maybe switch to a blacklist e.g. ".exe" files etc.
 function allowedFile(name) {
     name = name.toLowerCase();
-    //let type = file.type;
     let parts = name.split(".");
     let n = len(parts)
     if (n == 1) {
         // no extension
-        return false;
+        return true;
     }
     ext = parts[n - 1];
-    return allowedExts[ext];
+    return !blaclistedExt.includes(ext);
 }
 
 // TODO: very primitive, doesn't work for every word

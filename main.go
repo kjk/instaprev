@@ -378,6 +378,7 @@ func handleIndex(w http.ResponseWriter, r *http.Request) {
 	}
 	if strings.HasPrefix(path, "/api/site-files.json") {
 		handleAPISiteFiles(w, r)
+		return
 	}
 	referer := r.Header.Get("referer")
 	redirectURL := siteRedirectForPath(referer, r)

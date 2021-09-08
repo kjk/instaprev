@@ -22,6 +22,13 @@
             <p>
                 The files are private (hosted under random, un-guessable url) and will be deleted after ~2 hrs.
             </p>
+            <p>Upload using curl:
+                <ul>
+                    <li><code>curl -F name-on-server.html=@local-file.html https://www.instantpreview.dev/upload</code></li>
+                    <li>or: <code>curl --upload-file local-file.html https://www.instantpreview.dev/name-on-server.html</code> </li>
+                    <li>or to upload directory:<code>zip -9 -r website.zip www; curl --upload-file website.zip https://www.instantpreview.dev/upload</code></li>
+                </ul>
+            </p>
             <p>Max size of a single file: 5 MB, max size of all files: 10 MB.</p>
         </div>
 

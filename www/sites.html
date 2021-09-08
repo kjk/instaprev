@@ -18,10 +18,10 @@
                     let rsp = await fetch(apiURL);
                     let js = await rsp.json();
                     // console.log("js:", JSON.stringify(js, null, "  "))
-                    function cmpByName(f1, f2) {
+                    function cmpByTotalSize(f1, f2) {
                         let n1 = f1.TotalSize;
                         let n2 = f2.TotalSize;
-                        return n1 - n2;
+                        return n2 - n1;
                     }
                     js.sort(cmpByTotalSize);
                     this.sites = js;
@@ -30,8 +30,7 @@
         }
 
         function siteLink(site) {
-            let baseURL = `/p/${site.Token}/`;
-            let fullURL = baseURL + file.Path;
+            let fullURL = `/p/${site.Token}/`;
             let html = `<a href="${fullURL}">${site.Token}</a>`;
             return html;
         }

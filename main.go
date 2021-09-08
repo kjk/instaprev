@@ -321,9 +321,6 @@ func handlePreview(w http.ResponseWriter, r *http.Request) {
 	servePathInSite(w, r, path, site)
 }
 
-func serveFile(w http.ResponseWriter, r *http.Request, dir string, uriPath string) {
-}
-
 func handleIndex(w http.ResponseWriter, r *http.Request) {
 	path := r.URL.Path
 	if strings.HasPrefix(path, "/p/") {
@@ -347,6 +344,7 @@ func handleIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// give priority to our own files
 	dir := "www"
 	uriPath := path
 	logf(r.Context(), "serveFile: dir: '%s', uriPath: '%s'\n", dir, uriPath)
@@ -368,9 +366,8 @@ func handleIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// assuming those are our own html files
-	logf(r.Context(), "handleIndex: '%s'\n", r.URL)
-	serveFile(w, r, "www", path)
+	logf(r.Context(), "handleIndex: '%s' not found\n", r.URL)
+	http.NotFound(w, r)
 }
 
 // if uploaded files use absolute urls, they'll have incorrect paths on

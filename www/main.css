@@ -1,13 +1,31 @@
 html,
 body {
-    min-height: 100vh;
     font-size: 12pt;
+    margin: 0;
+    padding: 0;
+}
+
+* {
+    box-sizing: border-box;
 }
 
 body {
-    background-color: #fcfcfc;
-    padding-top: 1em;
     font-family: sans-serif;
+    background-color: red;
+    background-color: #fcfcfc;
+
+
+    /* 
+    100vh causes a scrollbar. On Chrome/Windows that I tested, 16px is the threshold for
+    not showing a scrollbar. Apparently that's due to 8px margin.
+    https://stackoverflow.com/questions/44645465/when-using-height-100vh-for-the-container-vertical-scrollbar-appears
+    I'm using 24 for margin of safety
+    */
+    min-height: calc(100vh - 24px);
+
+    margin-left: 1em;
+    margin-right: 1em;
+    padding: 0;
 }
 
 .nav {
@@ -25,15 +43,11 @@ body {
 }
 
 .welcome {
+    margin-top: 1em;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-}
-
-#body-wrapper {
-    margin-left: 1em;
-    margin-right: 1em;
 }
 
 #drop-area {

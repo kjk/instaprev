@@ -301,7 +301,8 @@ function onload() {
     // prevent dropping files on body from allowing
     // browser to display the file
     // preventDefaultsOnElement(document.body);
-    preventDefaultsOnElement(document.getElementById("body-wrapper"));
+    //preventDefaultsOnElement(document.getElementById("body-wrapper"));
+    preventDefaultsOnElement(document.body);
 
     dropArea = getDropContainerElement();
     preventDefaultsOnElement(dropArea);

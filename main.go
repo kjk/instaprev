@@ -1,6 +1,7 @@
 package main
 
 import (
+	"archive/zip"
 	"bytes"
 	"encoding/json"
 	"flag"
@@ -22,19 +23,19 @@ const (
 	timeTwoHours = time.Hour * 2
 )
 
-var blaclistedExt = []string{
-    "exe",
-    "mp4",
-    "avi",
-    "flv",
-    "mpg",
-    "mpeg",
-    "mov",
-    "mkv",
-    "wmv",
-    "dll",
-    "so",
-};
+var blacklistedExt = []string{
+	"exe",
+	"mp4",
+	"avi",
+	"flv",
+	"mpg",
+	"mpeg",
+	"mov",
+	"mkv",
+	"wmv",
+	"dll",
+	"so",
+}
 
 type siteFile struct {
 	Path       string
@@ -49,7 +50,6 @@ type Site struct {
 	createdOn time.Time
 	totalSize int64
 	files     []*siteFile
-	filePaths []string
 }
 
 var (
@@ -68,6 +68,27 @@ func getDataDir() string {
 	os.RemoveAll(dataDirCached)
 	must(os.MkdirAll(dataDirCached, 0755))
 	return dataDirCached
+}
+
+// "foo.BaR" => "bar"
+func getExt(s string) string {
+	s = filepath.Ext(s)
+	s = strings.ToLower(s)
+	return strings.TrimPrefix(s, ".")
+}
+
+func isZipFile(path string) bool {
+	return getExt(path) == "zip"
+}
+
+func isBlacklistedFileType(path string) bool {
+	ext := getExt(path)
+	for _, s := range blacklistedExt {
+		if ext == s {
+			return true
+		}
+	}
+	return false
 }
 
 func serveJSON(w http.ResponseWriter, r *http.Request, v interface{}) {
@@ -154,6 +175,112 @@ func handleAPISites(w http.ResponseWriter, r *http.Request) {
 	serveJSON(w, r, v)
 }
 
+func canonicalPath(path string) string {
+	// windows => unix pathname
+	path = strings.Replace(path, "\\", "/", -1)
+	return strings.TrimPrefix(path, "/")
+}
+
+func getSiteFileNames(site *Site) []string {
+	var res []string
+	for _, f := range site.files {
+		res = append(res, f.Path)
+	}
+	return res
+}
+
+// updates info in site
+func unpackZipFiles(zipFiles []string, site *Site) error {
+	var lastErr error
+	dir := filepath.Join(getDataDir(), site.token)
+	for _, zipFile := range zipFiles {
+		logf(ctx(), "unpackZipFiles: unpacking '%s'\n", zipFile)
+		st, err := os.Lstat(zipFile)
+		if err != nil {
+			lastErr = err
+			logf(ctx(), "unpackZipFile: os.Lstat('%s') failed with '%s'\n", zipFile, err)
+			continue
+		}
+		size := st.Size()
+		f, err := os.Open(zipFile)
+		if err != nil {
+			lastErr = err
+			logf(ctx(), "unpackZipFile: os.Open('%s') failed with '%s'\n", zipFile, err)
+			continue
+		}
+		zr, err := zip.NewReader(f, size)
+		if err != nil {
+			lastErr = err
+			logf(ctx(), "unpackZipFile: zip.NewReader() for '%s' failed with '%s'\n", zipFile, err)
+			f.Close()
+			continue
+		}
+
+		// trim common prefix. if files inside zip files are all under foo/,
+		// we want to remove foo/ from the paths and host the files under root
+		// TODO: possible that files extract from zip will over-write other files
+		fileNames := []string{}
+		for _, f := range zr.File {
+			path := canonicalPath(f.Name)
+			fileNames = append(fileNames, path)
+		}
+		trimCommonPrefix(fileNames)
+
+		// now extract using fixed-up file names
+		for i, f := range zr.File {
+			if f.FileInfo().IsDir() {
+				logf(ctx(), "unpackZipFile: skipping directory '%s' in '%s'\n", f.Name, zipFile)
+				continue
+			}
+			fr, err := f.Open()
+			if err != nil {
+				lastErr = err
+				logf(ctx(), "unpackZipFile: f.Open() of '%s' in '%s' failed with '%s'\n", f.Name, zipFile, err)
+				continue
+			}
+			path := filepath.Join(dir, fileNames[i])
+			logf(ctx(), "  unpacking '%s' => '%s'\n", f.Name, path)
+
+			err = os.MkdirAll(filepath.Dir(path), 755)
+			if err != nil {
+				fr.Close()
+				lastErr = err
+				logf(ctx(), "unpackZipFile: os.MkdirAll('%s') for '%s' failed with '%s'\n", filepath.Dir(path), zipFile, err)
+				continue
+			}
+
+			w, err := os.Create(path)
+			if err != nil {
+				fr.Close()
+				lastErr = err
+				logf(ctx(), "unpackZipFile: os.Create('%s') for '%s' failed with '%s'\n", path, zipFile, err)
+				continue
+			}
+			_, err = io.Copy(w, fr)
+			fr.Close()
+			err2 := w.Close()
+
+			if err != nil || err2 != nil {
+				lastErr = err
+				if err == nil {
+					lastErr = err2
+				}
+				logf(ctx(), "unpackZipFile: io.Copy() to '%s' for '%s' failed with '%s'\n", path, zipFile, err)
+			}
+			sf := &siteFile{
+				Path:       fileNames[i],
+				Size:       int64(f.UncompressedSize64),
+				pathOnDisk: path,
+				pathInForm: fileNames[i],
+			}
+			site.files = append(site.files, sf)
+			site.totalSize += int64(f.UncompressedSize64)
+		}
+		f.Close()
+	}
+	return lastErr
+}
+
 // POST /upload
 // POST /api/upload
 func handleUpload(w http.ResponseWriter, r *http.Request) {
@@ -176,9 +303,10 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 	// first collect info about file names so that we can trim common prefix
 	paths := []string{}
 	for path, fileHeaders := range form.File {
-		// windows => unix pathname
-		pathCanonical := strings.Replace(path, "\\", "/", -1)
-		pathCanonical = strings.TrimPrefix(pathCanonical, "/")
+		if isBlacklistedFileType(path) {
+			continue
+		}
+		pathCanonical := canonicalPath(path)
 		// if there are multiple files with the same name we only use first
 		fh := fileHeaders[0]
 		file := &siteFile{
@@ -195,10 +323,17 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	trimCommonPrefix(paths)
+
+	var zipFiles []string
 	for i := 0; i < len(files); i++ {
+		pathOnDisk := filepath.Join(dir, files[i].Path)
 		files[i].Path = paths[i]
-		files[i].pathOnDisk = filepath.Join(dir, files[i].Path)
+		files[i].pathOnDisk = pathOnDisk
+		if isZipFile(pathOnDisk) {
+			zipFiles = append(zipFiles, pathOnDisk)
+		}
 	}
+
 	for _, file := range files {
 		fh := form.File[file.pathInForm][0]
 		fr, err := fh.Open()
@@ -244,15 +379,18 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 		token:     token,
 		createdOn: time.Now(),
 		files:     files,
-		filePaths: paths,
 		totalSize: totalSize,
 	}
+
+	// TODO: decide if I should delete the zip file after unpacking
+	_ = unpackZipFiles(zipFiles, site)
+
 	muSites.Lock()
 	sites = append(sites, site)
 	muSites.Unlock()
 
 	var uri string
-	if len(files) > 1 {
+	if len(site.files) > 1 {
 		uri = fmt.Sprintf("https://%s/p/%s/", r.Host, token)
 	} else {
 		f := files[0]
@@ -318,7 +456,7 @@ func servePathInSite(w http.ResponseWriter, r *http.Request, path string, site *
 	}
 	toFind := strings.TrimPrefix(rest, "/")
 	if toFind == "" {
-		if len(site.filePaths) == 1 {
+		if len(site.files) == 1 {
 			toFind = site.files[0].Path
 		} else {
 			toFind = "index.html"

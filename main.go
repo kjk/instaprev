@@ -181,6 +181,7 @@ func canonicalPath(path string) string {
 	return strings.TrimPrefix(path, "/")
 }
 
+/*
 func getSiteFileNames(site *Site) []string {
 	var res []string
 	for _, f := range site.files {
@@ -188,6 +189,7 @@ func getSiteFileNames(site *Site) []string {
 	}
 	return res
 }
+*/
 
 // updates info in site
 func unpackZipFiles(zipFiles []string, site *Site) error {
@@ -232,6 +234,11 @@ func unpackZipFiles(zipFiles []string, site *Site) error {
 				logf(ctx(), "unpackZipFile: skipping directory '%s' in '%s'\n", f.Name, zipFile)
 				continue
 			}
+			if isBlacklistedFileType(f.Name) {
+				logf(ctx(), "unpackZipFile: skipping blacklisted file '%s' in '%s'\n", f.Name, zipFile)
+				continue
+			}
+
 			fr, err := f.Open()
 			if err != nil {
 				lastErr = err

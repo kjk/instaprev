@@ -94,13 +94,31 @@ func isBlacklistedFileType(path string) bool {
 func serveJSON(w http.ResponseWriter, r *http.Request, v interface{}) {
 	d, err := json.Marshal(v)
 	if err != nil {
-		logf(r.Context(), "serveJSON: json.Marshal() failed with '%s'\n", err)
-		http.NotFound(w, r)
+		serveInternalError(w, r, "serveJSON: json.Marshal() failed with '%s'\n", err)
 		return
 	}
 	//logf(r.Context(), "serveJSON:\n%s\n", string(d))
 	var zeroTime time.Time
 	http.ServeContent(w, r, "foo.json", zeroTime, bytes.NewReader(d))
+}
+
+func serveErrorStatus(w http.ResponseWriter, r *http.Request, status int, s string, args ...interface{}) {
+	if len(args) > 0 {
+		s = fmt.Sprintf(s, args...)
+	}
+	logf(r.Context(), s)
+	w.Header().Set("Content-Type", "text/plain")
+	w.Header().Set("Content-Length", fmt.Sprintf("%d", len(s)))
+	w.WriteHeader(http.StatusBadRequest)
+	w.Write([]byte(s))
+}
+
+func serveBadRequestError(w http.ResponseWriter, r *http.Request, s string, args ...interface{}) {
+	serveErrorStatus(w, r, http.StatusBadRequest, s, args...)
+}
+
+func serveInternalError(w http.ResponseWriter, r *http.Request, s string, args ...interface{}) {
+	serveErrorStatus(w, r, http.StatusInternalServerError, s, args...)
 }
 
 func servePlainText(w http.ResponseWriter, r *http.Request, s string) {
@@ -113,7 +131,7 @@ func handleAPISiteFiles(w http.ResponseWriter, r *http.Request) {
 	token := r.FormValue("token")
 	logf(r.Context(), "handleAPISiteFiles: '%s', token: '%s'\n", r.URL, token)
 	if token == "" {
-		http.NotFound(w, r)
+		serveBadRequestError(w, r, "Error: missing 'token' arg")
 		return
 	}
 	site := findSiteByToken(token)
@@ -297,8 +315,7 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 	logf(r.Context(), "handleUpload: '%s', Content-Type: '%s', token: '%s', dir: '%s'\n", r.URL, ct, token, dir)
 	err := r.ParseMultipartForm(maxSize10Mb)
 	if err != nil {
-		logf(r.Context(), "handleUpload: r.ParseMultipartForm() failed with '%s'\n", err)
-		http.NotFound(w, r)
+		serveBadRequestError(w, r, "Error: handleUpload: r.ParseMultipartForm() failed with '%s'\n", err)
 		return
 	}
 
@@ -326,7 +343,7 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 		paths = append(paths, pathCanonical)
 	}
 	if len(files) == 0 {
-		http.NotFound(w, r)
+		serveBadRequestError(w, r, "Error: no files")
 		return
 	}
 	trimCommonPrefix(paths)
@@ -345,35 +362,30 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 		fh := form.File[file.pathInForm][0]
 		fr, err := fh.Open()
 		if err != nil {
-			logf(r.Context(), "handleUpload: fh.Open() on '%s' failed with '%s'\n", file.pathInForm, err)
-			http.NotFound(w, r)
+			serveInternalError(w, r, "Error: fh.Open() on '%s' failed with '%s'\n", file.pathInForm, err)
 			return
 		}
 		pathOnDisk := file.pathOnDisk
 		if err != nil {
-			logf(r.Context(), "handleUpload: os.MkdirAll('%s') failed with '%s'\n", filepath.Dir(pathOnDisk), err)
+			serveInternalError(w, r, "handleUpload: os.MkdirAll('%s') failed with '%s'\n", filepath.Dir(pathOnDisk), err)
 			fr.Close()
-			http.NotFound(w, r)
 			return
 		}
 		err = os.MkdirAll(filepath.Dir(pathOnDisk), 0755)
 		if err != nil {
-			logf(r.Context(), "handleUpload: os.MkdirAll('%s') failed with '%s'\n", filepath.Dir(pathOnDisk), err)
+			serveInternalError(w, r, "handleUpload: os.MkdirAll('%s') failed with '%s'\n", filepath.Dir(pathOnDisk), err)
 			fr.Close()
-			http.NotFound(w, r)
 			return
 		}
 		fw, err := os.Create(pathOnDisk)
 		if err != nil {
-			logf(r.Context(), "handleUpload: os.Create('%s') failed with '%s'\n", pathOnDisk, err)
+			serveInternalError(w, r, "handleUpload: os.Create('%s') failed with '%s'\n", pathOnDisk, err)
 			fr.Close()
-			http.NotFound(w, r)
 			return
 		}
 		_, err = io.Copy(fw, fr)
 		if err != nil {
-			logf(r.Context(), "handleUpload: io.Copy() on '%s' failed with '%s'\n", pathOnDisk, err)
-			http.NotFound(w, r)
+			serveInternalError(w, r, "handleUpload: io.Copy() on '%s' failed with '%s'\n", pathOnDisk, err)
 			return
 		}
 		fr.Close()

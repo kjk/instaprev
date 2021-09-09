@@ -199,16 +199,6 @@ func canonicalPath(path string) string {
 	return strings.TrimPrefix(path, "/")
 }
 
-/*
-func getSiteFileNames(site *Site) []string {
-	var res []string
-	for _, f := range site.files {
-		res = append(res, f.Path)
-	}
-	return res
-}
-*/
-
 // updates info in site
 func unpackZipFiles(zipFiles []string, site *Site) error {
 	var lastErr error
@@ -337,10 +327,43 @@ func handleUploadMaybeRaw(w http.ResponseWriter, r *http.Request) {
 		totalSize: 0,
 	}
 
-	// TODO: should try to auto-detect name of the file
-	zipFiles := []string{tmpPath}
-	// TODO: decide if I should delete the zip file after unpacking
-	_ = unpackZipFiles(zipFiles, site)
+	path := r.URL.Path
+	isZip := isZipFile(path)
+	if isZip || path == "/upload" || path == "/upload/api" {
+		// assume that uploads to /upload are .zip files
+		// because that's what tutorial says
+		// TODO: should try to auto-detect name of the file
+		zipFiles := []string{tmpPath}
+		// TODO: decide if I should delete the zip file after unpacking
+		_ = unpackZipFiles(zipFiles, site)
+	} else {
+		// otherwise save upload to /foo.txt as foo.txt
+		if !isBlacklistedFileType(path) {
+			path = canonicalPath(path)
+			pathOnDisk := filepath.Join(getDataDir(), token, path)
+			err = os.MkdirAll(filepath.Dir(pathOnDisk), 0755)
+			if err != nil {
+				serveInternalError(w, r, "Error: handleUploadMaybeRaw: os.MkdirAll('%s') failed with '%s'", filepath.Dir(pathOnDisk), err)
+				return
+			}
+			err = os.Rename(tmpPath, pathOnDisk)
+			if err != nil {
+				serveInternalError(w, r, "Error: handleUploadMaybeRaw: os.Rename('%s', '%s') failed with '%s'", tmpPath, pathOnDisk, err)
+				return
+			}
+			size := int64(0)
+			st, err := os.Lstat(pathOnDisk)
+			must(err)
+			size = st.Size()
+			sf := &siteFile{
+				Path:       path,
+				Size:       size,
+				pathOnDisk: pathOnDisk,
+				pathInForm: path,
+			}
+			site.files = append(site.files, sf)
+		}
+	}
 
 	if len(site.files) == 0 {
 		http.NotFound(w, r)
@@ -578,6 +601,11 @@ func handlePreview(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleIndex(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodPost || r.Method == http.MethodPut {
+		handleUpload(w, r)
+		return
+	}
+
 	path := r.URL.Path
 	if strings.HasPrefix(path, "/p/") {
 		handlePreview(w, r)

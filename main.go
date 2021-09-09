@@ -306,12 +306,72 @@ func unpackZipFiles(zipFiles []string, site *Site) error {
 	return lastErr
 }
 
+// this is an upload of a raw file. try to auto-detect what it is
+func handleUploadMaybeRaw(w http.ResponseWriter, r *http.Request) {
+	token := generateToken(tokenLength)
+	tmpPath := filepath.Join(getDataDir(), token+".dat")
+	defer os.Remove(tmpPath)
+	logf(r.Context(), "handleUploadMaybeRaw: '%s', token: '%s', tmpPath: '%s'\n", r.URL, token, tmpPath)
+
+	f, err := os.Create(tmpPath)
+	if err != nil {
+		logf(r.Context(), "handleUploadMaybeRaw: os.Create('%s') failed with '%s'\n", tmpPath, err)
+		http.NotFound(w, r)
+		return
+	}
+	_, err = io.Copy(f, r.Body)
+	if err != nil {
+		logf(r.Context(), "handleUploadMaybeRaw: io.Copy() for '%s' failed with '%s'\n", tmpPath, err)
+		http.NotFound(w, r)
+		return
+	}
+	err = f.Close()
+	if err != nil {
+		logf(r.Context(), "handleUploadMaybeRaw: f.Close() failed with '%s'\n", err)
+		http.NotFound(w, r)
+		return
+	}
+	site := &Site{
+		token:     token,
+		createdOn: time.Now(),
+		totalSize: 0,
+	}
+
+	// TODO: should try to auto-detect name of the file
+	zipFiles := []string{tmpPath}
+	// TODO: decide if I should delete the zip file after unpacking
+	_ = unpackZipFiles(zipFiles, site)
+
+	if len(site.files) == 0 {
+		http.NotFound(w, r)
+		return
+	}
+
+	muSites.Lock()
+	sites = append(sites, site)
+	muSites.Unlock()
+
+	var uri string
+	if len(site.files) > 1 {
+		uri = fmt.Sprintf("https://%s/p/%s/", r.Host, token)
+	} else {
+		f := site.files[0]
+		uri = fmt.Sprintf("https://%s/p/%s/%s", r.Host, token, f.Path)
+	}
+	rsp := bytes.NewReader([]byte(uri))
+	http.ServeContent(w, r, "result.txt", time.Now(), rsp)
+}
+
 // POST /upload
 // POST /api/upload
 func handleUpload(w http.ResponseWriter, r *http.Request) {
+	ct := r.Header.Get("content-type")
+	if ct == "" {
+		handleUploadMaybeRaw(w, r)
+		return
+	}
 	token := generateToken(tokenLength)
 	dir := filepath.Join(getDataDir(), token)
-	ct := r.Header.Get("content-type")
 	logf(r.Context(), "handleUpload: '%s', Content-Type: '%s', token: '%s', dir: '%s'\n", r.URL, ct, token, dir)
 	err := r.ParseMultipartForm(maxSize10Mb)
 	if err != nil {
@@ -412,7 +472,7 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 	if len(site.files) > 1 {
 		uri = fmt.Sprintf("https://%s/p/%s/", r.Host, token)
 	} else {
-		f := files[0]
+		f := site.files[0]
 		uri = fmt.Sprintf("https://%s/p/%s/%s", r.Host, token, f.Path)
 	}
 	rsp := bytes.NewReader([]byte(uri))

@@ -1,12 +1,10 @@
 package main
 
 import (
-	"archive/zip"
 	"bytes"
 	"encoding/json"
 	"flag"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"os/signal"
@@ -50,6 +48,7 @@ type Site struct {
 	createdOn time.Time
 	totalSize int64
 	files     []*siteFile
+	isSPA     bool
 }
 
 var (
@@ -126,7 +125,12 @@ func servePlainText(w http.ResponseWriter, r *http.Request, s string) {
 	http.ServeContent(w, r, "foo.txt", zeroTime, bytes.NewReader([]byte(s)))
 }
 
-// GET /api/site-files.json?token=${token}
+type siteFilesResult struct {
+	Files []*siteFile
+	IsSPA bool
+}
+
+// GET /api/site-info.json?token=${token}
 func handleAPISiteFiles(w http.ResponseWriter, r *http.Request) {
 	token := r.FormValue("token")
 	logf(r.Context(), "handleAPISiteFiles: '%s', token: '%s'\n", r.URL, token)
@@ -140,7 +144,11 @@ func handleAPISiteFiles(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	serveJSON(w, r, site.files)
+	v := &siteFilesResult{
+		Files: site.files,
+		IsSPA: site.isSPA,
+	}
+	serveJSON(w, r, v)
 }
 
 // GET /api/summary.json
@@ -172,6 +180,7 @@ type siteInfo struct {
 	Token     string
 	FileCount int
 	TotalSize int64
+	IsSPA     bool
 }
 
 // GET /api/sites.json
@@ -186,320 +195,12 @@ func handleAPISites(w http.ResponseWriter, r *http.Request) {
 			Token:     site.token,
 			FileCount: len(site.files),
 			TotalSize: site.totalSize,
+			IsSPA:     site.isSPA,
 		}
 		v = append(v, si)
 	}
 	muSites.Unlock()
 	serveJSON(w, r, v)
-}
-
-func canonicalPath(path string) string {
-	// windows => unix pathname
-	path = strings.Replace(path, "\\", "/", -1)
-	return strings.TrimPrefix(path, "/")
-}
-
-// updates info in site
-func unpackZipFiles(zipFiles []string, site *Site) error {
-	var lastErr error
-	dir := filepath.Join(getDataDir(), site.token)
-	for _, zipFile := range zipFiles {
-		logf(ctx(), "unpackZipFiles: unpacking '%s'\n", zipFile)
-		st, err := os.Lstat(zipFile)
-		if err != nil {
-			lastErr = err
-			logf(ctx(), "unpackZipFile: os.Lstat('%s') failed with '%s'\n", zipFile, err)
-			continue
-		}
-		size := st.Size()
-		f, err := os.Open(zipFile)
-		if err != nil {
-			lastErr = err
-			logf(ctx(), "unpackZipFile: os.Open('%s') failed with '%s'\n", zipFile, err)
-			continue
-		}
-		zr, err := zip.NewReader(f, size)
-		if err != nil {
-			lastErr = err
-			logf(ctx(), "unpackZipFile: zip.NewReader() for '%s' failed with '%s'\n", zipFile, err)
-			f.Close()
-			continue
-		}
-
-		// trim common prefix. if files inside zip files are all under foo/,
-		// we want to remove foo/ from the paths and host the files under root
-		// TODO: possible that files extract from zip will over-write other files
-		fileNames := []string{}
-		for _, f := range zr.File {
-			path := canonicalPath(f.Name)
-			fileNames = append(fileNames, path)
-		}
-		trimCommonPrefix(fileNames)
-
-		// now extract using fixed-up file names
-		for i, f := range zr.File {
-			if f.FileInfo().IsDir() {
-				logf(ctx(), "unpackZipFile: skipping directory '%s' in '%s'\n", f.Name, zipFile)
-				continue
-			}
-			if isBlacklistedFileType(f.Name) {
-				logf(ctx(), "unpackZipFile: skipping blacklisted file '%s' in '%s'\n", f.Name, zipFile)
-				continue
-			}
-
-			fr, err := f.Open()
-			if err != nil {
-				lastErr = err
-				logf(ctx(), "unpackZipFile: f.Open() of '%s' in '%s' failed with '%s'\n", f.Name, zipFile, err)
-				continue
-			}
-			path := filepath.Join(dir, fileNames[i])
-			logf(ctx(), "  unpacking '%s' => '%s'\n", f.Name, path)
-
-			err = os.MkdirAll(filepath.Dir(path), 755)
-			if err != nil {
-				fr.Close()
-				lastErr = err
-				logf(ctx(), "unpackZipFile: os.MkdirAll('%s') for '%s' failed with '%s'\n", filepath.Dir(path), zipFile, err)
-				continue
-			}
-
-			w, err := os.Create(path)
-			if err != nil {
-				fr.Close()
-				lastErr = err
-				logf(ctx(), "unpackZipFile: os.Create('%s') for '%s' failed with '%s'\n", path, zipFile, err)
-				continue
-			}
-			_, err = io.Copy(w, fr)
-			fr.Close()
-			err2 := w.Close()
-
-			if err != nil || err2 != nil {
-				lastErr = err
-				if err == nil {
-					lastErr = err2
-				}
-				logf(ctx(), "unpackZipFile: io.Copy() to '%s' for '%s' failed with '%s'\n", path, zipFile, err)
-			}
-			sf := &siteFile{
-				Path:       fileNames[i],
-				Size:       int64(f.UncompressedSize64),
-				pathOnDisk: path,
-				pathInForm: fileNames[i],
-			}
-			site.files = append(site.files, sf)
-			site.totalSize += int64(f.UncompressedSize64)
-		}
-		f.Close()
-	}
-	return lastErr
-}
-
-// this is an upload of a raw file. try to auto-detect what it is
-func handleUploadMaybeRaw(w http.ResponseWriter, r *http.Request) {
-	token := generateToken(tokenLength)
-	tmpPath := filepath.Join(getDataDir(), token+".dat")
-	defer os.Remove(tmpPath)
-	logf(r.Context(), "handleUploadMaybeRaw: '%s', token: '%s', tmpPath: '%s'\n", r.URL, token, tmpPath)
-
-	f, err := os.Create(tmpPath)
-	if err != nil {
-		logf(r.Context(), "handleUploadMaybeRaw: os.Create('%s') failed with '%s'\n", tmpPath, err)
-		http.NotFound(w, r)
-		return
-	}
-	_, err = io.Copy(f, r.Body)
-	if err != nil {
-		logf(r.Context(), "handleUploadMaybeRaw: io.Copy() for '%s' failed with '%s'\n", tmpPath, err)
-		http.NotFound(w, r)
-		return
-	}
-	err = f.Close()
-	if err != nil {
-		logf(r.Context(), "handleUploadMaybeRaw: f.Close() failed with '%s'\n", err)
-		http.NotFound(w, r)
-		return
-	}
-	site := &Site{
-		token:     token,
-		createdOn: time.Now(),
-		totalSize: 0,
-	}
-
-	path := r.URL.Path
-	isZip := isZipFile(path)
-	if isZip || path == "/upload" || path == "/upload/api" {
-		// assume that uploads to /upload are .zip files
-		// because that's what tutorial says
-		// TODO: should try to auto-detect name of the file
-		zipFiles := []string{tmpPath}
-		// TODO: decide if I should delete the zip file after unpacking
-		_ = unpackZipFiles(zipFiles, site)
-	} else {
-		// otherwise save upload to /foo.txt as foo.txt
-		if !isBlacklistedFileType(path) {
-			path = canonicalPath(path)
-			pathOnDisk := filepath.Join(getDataDir(), token, path)
-			err = os.MkdirAll(filepath.Dir(pathOnDisk), 0755)
-			if err != nil {
-				serveInternalError(w, r, "Error: handleUploadMaybeRaw: os.MkdirAll('%s') failed with '%s'", filepath.Dir(pathOnDisk), err)
-				return
-			}
-			err = os.Rename(tmpPath, pathOnDisk)
-			if err != nil {
-				serveInternalError(w, r, "Error: handleUploadMaybeRaw: os.Rename('%s', '%s') failed with '%s'", tmpPath, pathOnDisk, err)
-				return
-			}
-			size := int64(0)
-			st, err := os.Lstat(pathOnDisk)
-			must(err)
-			size = st.Size()
-			sf := &siteFile{
-				Path:       path,
-				Size:       size,
-				pathOnDisk: pathOnDisk,
-				pathInForm: path,
-			}
-			site.files = append(site.files, sf)
-		}
-	}
-
-	if len(site.files) == 0 {
-		http.NotFound(w, r)
-		return
-	}
-
-	muSites.Lock()
-	sites = append(sites, site)
-	muSites.Unlock()
-
-	var uri string
-	if len(site.files) > 1 {
-		uri = fmt.Sprintf("https://%s/p/%s/", r.Host, token)
-	} else {
-		f := site.files[0]
-		uri = fmt.Sprintf("https://%s/p/%s/%s", r.Host, token, f.Path)
-	}
-	rsp := bytes.NewReader([]byte(uri))
-	http.ServeContent(w, r, "result.txt", time.Now(), rsp)
-}
-
-// POST /upload
-// POST /api/upload
-func handleUpload(w http.ResponseWriter, r *http.Request) {
-	ct := r.Header.Get("content-type")
-	if ct == "" {
-		handleUploadMaybeRaw(w, r)
-		return
-	}
-	token := generateToken(tokenLength)
-	dir := filepath.Join(getDataDir(), token)
-	logf(r.Context(), "handleUpload: '%s', Content-Type: '%s', token: '%s', dir: '%s'\n", r.URL, ct, token, dir)
-	err := r.ParseMultipartForm(maxSize10Mb)
-	if err != nil {
-		serveBadRequestError(w, r, "Error: handleUpload: r.ParseMultipartForm() failed with '%s'\n", err)
-		return
-	}
-
-	form := r.MultipartForm
-	totalSize := int64(0)
-	files := []*siteFile{}
-	defer form.RemoveAll()
-
-	// first collect info about file names so that we can trim common prefix
-	paths := []string{}
-	for path, fileHeaders := range form.File {
-		if isBlacklistedFileType(path) {
-			continue
-		}
-		pathCanonical := canonicalPath(path)
-		// if there are multiple files with the same name we only use first
-		fh := fileHeaders[0]
-		file := &siteFile{
-			Path:       pathCanonical,
-			Size:       fh.Size,
-			pathInForm: path,
-		}
-		totalSize += fh.Size
-		files = append(files, file)
-		paths = append(paths, pathCanonical)
-	}
-	if len(files) == 0 {
-		serveBadRequestError(w, r, "Error: no files")
-		return
-	}
-	trimCommonPrefix(paths)
-
-	var zipFiles []string
-	for i := 0; i < len(files); i++ {
-		pathOnDisk := filepath.Join(dir, files[i].Path)
-		files[i].Path = paths[i]
-		files[i].pathOnDisk = pathOnDisk
-		if isZipFile(pathOnDisk) {
-			zipFiles = append(zipFiles, pathOnDisk)
-		}
-	}
-
-	for _, file := range files {
-		fh := form.File[file.pathInForm][0]
-		fr, err := fh.Open()
-		if err != nil {
-			serveInternalError(w, r, "Error: fh.Open() on '%s' failed with '%s'\n", file.pathInForm, err)
-			return
-		}
-		pathOnDisk := file.pathOnDisk
-		if err != nil {
-			serveInternalError(w, r, "handleUpload: os.MkdirAll('%s') failed with '%s'\n", filepath.Dir(pathOnDisk), err)
-			fr.Close()
-			return
-		}
-		err = os.MkdirAll(filepath.Dir(pathOnDisk), 0755)
-		if err != nil {
-			serveInternalError(w, r, "handleUpload: os.MkdirAll('%s') failed with '%s'\n", filepath.Dir(pathOnDisk), err)
-			fr.Close()
-			return
-		}
-		fw, err := os.Create(pathOnDisk)
-		if err != nil {
-			serveInternalError(w, r, "handleUpload: os.Create('%s') failed with '%s'\n", pathOnDisk, err)
-			fr.Close()
-			return
-		}
-		_, err = io.Copy(fw, fr)
-		if err != nil {
-			serveInternalError(w, r, "handleUpload: io.Copy() on '%s' failed with '%s'\n", pathOnDisk, err)
-			return
-		}
-		fr.Close()
-		totalSize += fh.Size
-		logf(r.Context(), "handleUpload: file '%s' (canonical: '%s'), name: '%s' of size %s saved as '%s'\n", file.pathInForm, file.Path, fh.Filename, humanizeSize(fh.Size), pathOnDisk)
-	}
-	logf(r.Context(), "handleUpload: %d files of total size %s\n", len(files), humanizeSize(totalSize))
-
-	site := &Site{
-		token:     token,
-		createdOn: time.Now(),
-		files:     files,
-		totalSize: totalSize,
-	}
-
-	// TODO: decide if I should delete the zip file after unpacking
-	_ = unpackZipFiles(zipFiles, site)
-
-	muSites.Lock()
-	sites = append(sites, site)
-	muSites.Unlock()
-
-	var uri string
-	if len(site.files) > 1 {
-		uri = fmt.Sprintf("https://%s/p/%s/", r.Host, token)
-	} else {
-		f := site.files[0]
-		uri = fmt.Sprintf("https://%s/p/%s/%s", r.Host, token, f.Path)
-	}
-	rsp := bytes.NewReader([]byte(uri))
-	http.ServeContent(w, r, "result.txt", time.Now(), rsp)
 }
 
 func expireSitesLoop() {
@@ -557,6 +258,38 @@ func servePathInSite(w http.ResponseWriter, r *http.Request, path string, site *
 		return
 	}
 	toFind := strings.TrimPrefix(rest, "/")
+	logf(r.Context(), "servePathInSite: toFind: '%s'\n", toFind)
+
+	// in SPA mode or with custom 404.html this is a special url that shows files
+	if toFind == "_dir" {
+		path := filepath.Join("www", "listSiteFiles.html")
+		logf(r.Context(), "servePathInSite: serving '%s'\n", path)
+		http.ServeFile(w, r, path)
+		return
+	}
+
+	if toFind == "_spa" {
+		// toggle SPA mode
+		site.isSPA = !site.isSPA
+		redirectURL := fmt.Sprintf("/p/%s/_dir", site.token)
+		http.Redirect(w, r, redirectURL, http.StatusTemporaryRedirect)
+		return
+	}
+
+	var fileIndex *siteFile
+	var file404 *siteFile
+
+	// TODO: could cache it
+	for _, f := range site.files {
+		if f.Path == "index.html" {
+			fileIndex = f
+			continue
+		}
+		if f.Path == "404.html" {
+			file404 = f
+		}
+	}
+
 	if toFind == "" {
 		if len(site.files) == 1 {
 			toFind = site.files[0].Path
@@ -564,7 +297,8 @@ func servePathInSite(w http.ResponseWriter, r *http.Request, path string, site *
 			toFind = "index.html"
 		}
 	}
-	logf(r.Context(), "servePathInSite: path: '%s', rest: '%s', toFind: '%s'\n", path, rest, toFind)
+
+	logf(r.Context(), "servePathInSite: path: '%s', rest: '%s', toFind: '%s', hasIndex: %v, has404: %v\n", path, rest, toFind, fileIndex != nil, file404 != nil)
 	toFind2 := toFind + ".html" // also serve clean urls with ".html" stripped off
 	findFileByPath := func() *siteFile {
 		for _, f := range site.files {
@@ -577,14 +311,26 @@ func servePathInSite(w http.ResponseWriter, r *http.Request, path string, site *
 		}
 		return nil
 	}
+
 	file := findFileByPath()
 	if file == nil {
-		path404 := filepath.Join("www", "404site.html")
-		logf(r.Context(), "servePathInSite: file doesn't exist, serving '%s'\n", path404)
-		http.ServeFile(w, r, path404)
+		if site.isSPA && fileIndex != nil {
+			logf(r.Context(), "serving index.html because '%s' not found and isSPA\n", toFind)
+			file = fileIndex
+		} else if file404 != nil {
+			logf(r.Context(), "serving 404.html because '%s' not found\n", toFind)
+			file = fileIndex
+		}
+	}
+	if file != nil {
+		logf(r.Context(), "servePathInSite: serving '%s'\n", file.pathOnDisk)
+		http.ServeFile(w, r, file.pathOnDisk)
 		return
 	}
-	http.ServeFile(w, r, file.pathOnDisk)
+
+	path404 := filepath.Join("www", "listSiteFiles.html")
+	logf(r.Context(), "servePathInSite: serving listSiteFiles.html because '%s' doesn't exist\n", toFind)
+	http.ServeFile(w, r, path404)
 }
 
 // GET /p/${token}/${path}
@@ -619,7 +365,7 @@ func handleIndex(w http.ResponseWriter, r *http.Request) {
 		handleAPISummary(w, r)
 		return
 	}
-	if path == "/api/site-files.json" {
+	if path == "/api/site-info.json" {
 		handleAPISiteFiles(w, r)
 		return
 	}
@@ -629,6 +375,11 @@ func handleIndex(w http.ResponseWriter, r *http.Request) {
 	}
 	if path == "/ping" {
 		servePlainText(w, r, "pong")
+		return
+	}
+	if path == "/sites" {
+		filePath := filepath.Join("www", "listSites.html")
+		http.ServeFile(w, r, filePath)
 		return
 	}
 
@@ -707,7 +458,7 @@ func doRunServer() {
 	}
 	httpSrv.Addr = httpAddr
 	ctx := ctx()
-	logf(ctx, "Starting server on %s, data dir: '%s'\n", httpAddr, getDataDir())
+	logf(ctx, "Starting server on http://%s, data dir: '%s'\n", httpAddr, getDataDir())
 	chServerClosed := make(chan bool, 1)
 	go func() {
 		err := httpSrv.ListenAndServe()

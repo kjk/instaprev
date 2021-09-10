@@ -52,12 +52,19 @@
         </p>
         <div x-data>
             <table class="tblList">
+                <tr>
+                    <th>site</th>
+                    <th>files</th>
+                    <th>total size</th>
+                    <th>spa?</th>
+                </tr>
                 <template x-for="site in $store.data.sites">
                     <tr>
                         <td x-html="siteLink(site)">
                         </td>
                         <td x-text="site.FileCount"></td>
-                        <td x-text=" humanizeSize(site.TotalSize)"></td>
+                        <td x-text="humanizeSize(site.TotalSize)"></td>
+                        <td x-text="site.IsSPA ? 'yes' : ''"></td>
                     </tr>
                 </template>
             </table>

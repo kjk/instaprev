@@ -6,19 +6,20 @@
     <script src="//unpkg.com/alpinejs" defer></script>
     <script src="/main.js" defer></script>
     <script>
-        console.log("404site.html, window.location:", window.location);
+        //console.log("listSiteFiles.html, window.location:", window.location);
 
         let token;
         async function initAlpine() {
             console.log("initAlpine");
             let uri = window.location;
             token = uri.pathname.substr(3, 6);
-            let apiURL = `/api/site-files.json?token=${token}`;
-            Alpine.store('data', {
-                "files": [],
-                "token": token,
+            let apiURL = `/api/site-info.json?token=${token}`;
+            Alpine.store('site', {
+                files: [],
+                isSPA: false,
+                token: token,
                 async init() {
-                    console.log("starting fetch:", apiURL);
+                    //console.log("starting fetch:", apiURL);
                     let rsp = await fetch(apiURL);
                     let js = await rsp.json();
                     // console.log("js:", JSON.stringify(js, null, "  "))
@@ -33,8 +34,11 @@
                         }
                         return 0;
                     }
-                    js.sort(cmpByName);
-                    this.files = js;
+                    let files = js.Files;
+                    let isSPA = js.IsSPA;
+                    files.sort(cmpByName);
+                    this.files = files;
+                    this.isSPA = isSPA;
                 }
             });
         }
@@ -44,6 +48,12 @@
             let fullURL = baseURL + file.Path;
             let html = `<a href="${fullURL}">${file.Path}</a>`;
             return html;
+        }
+
+        function toggleSpaLink() {
+            console.log("toggleSpaLink");
+            let uri = `/p/${token}/_spa`;
+            return `&nbsp;<a href="${uri}">toggle SPA</a>`;
         }
 
         function init() {
@@ -59,13 +69,23 @@
 </head>
 
 <body>
-    <div id="body-wrapper">
+    <div id="body-wrapper" x-data>
         <p>
-            <a href="/">Home</a> / File <span id="fileId"></span> not found on this site. Here's a list of files that do exist:
+            <a href="/">Home</a> / File <span id="fileId"></span> not found on this site.
         </p>
-        <div x-data>
+        <div style="display: flex; flex-direction: row;">
+            <div>Is site Single Page Application?&nbsp;</div>
+            <div x-text="$store.site.isSPA ? 'yes' : 'no'"></div>
+            <div x-html="toggleSpaLink()"></div>
+        </div>
+        <p>List of files:</p>
+        <div>
             <table class="tblList">
-                <template x-for="file in $store.data.files">
+                <tr>
+                    <th>file</td>
+                    <th>size</td>
+                </tr>
+                <template x-for="file in $store.site.files">
                     <tr>
                         <td x-html="fileLink(file)">
                         </td>

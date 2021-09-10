@@ -17,23 +17,8 @@ import (
 
 const (
 	tokenLength  = 6                // like transfer.sh
-	maxSize10Mb  = 1024 * 1024 * 20 // this is 10 MB in html front-end
 	timeTwoHours = time.Hour * 2
 )
-
-var blacklistedExt = []string{
-	"exe",
-	"mp4",
-	"avi",
-	"flv",
-	"mpg",
-	"mpeg",
-	"mov",
-	"mkv",
-	"wmv",
-	"dll",
-	"so",
-}
 
 type siteFile struct {
 	Path       string
@@ -67,27 +52,6 @@ func getDataDir() string {
 	os.RemoveAll(dataDirCached)
 	must(os.MkdirAll(dataDirCached, 0755))
 	return dataDirCached
-}
-
-// "foo.BaR" => "bar"
-func getExt(s string) string {
-	s = filepath.Ext(s)
-	s = strings.ToLower(s)
-	return strings.TrimPrefix(s, ".")
-}
-
-func isZipFile(path string) bool {
-	return getExt(path) == "zip"
-}
-
-func isBlacklistedFileType(path string) bool {
-	ext := getExt(path)
-	for _, s := range blacklistedExt {
-		if ext == s {
-			return true
-		}
-	}
-	return false
 }
 
 func serveJSON(w http.ResponseWriter, r *http.Request, v interface{}) {

@@ -12,6 +12,44 @@ import (
 	"time"
 )
 
+const (
+	maxSize20Mb  = 1024 * 1024 * 20 // this is 10 MB in html front-end
+)
+
+var blacklistedExt = []string{
+	"exe",
+	"mp4",
+	"avi",
+	"flv",
+	"mpg",
+	"mpeg",
+	"mov",
+	"mkv",
+	"wmv",
+	"dll",
+	"so",
+}
+
+// "foo.BaR" => "bar"
+func getExt(s string) string {
+	s = filepath.Ext(s)
+	s = strings.ToLower(s)
+	return strings.TrimPrefix(s, ".")
+}
+
+func isZipFile(path string) bool {
+	return getExt(path) == "zip"
+}
+
+func isBlacklistedFileType(path string) bool {
+	ext := getExt(path)
+	for _, s := range blacklistedExt {
+		if ext == s {
+			return true
+		}
+	}
+	return false
+}
 func canonicalPath(path string) string {
 	// windows => unix pathname
 	path = strings.Replace(path, "\\", "/", -1)
@@ -226,7 +264,7 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 	token := generateToken(tokenLength)
 	dir := filepath.Join(getDataDir(), token)
 	logf(r.Context(), "handleUpload: '%s', Content-Type: '%s', token: '%s', dir: '%s'\n", r.URL, ct, token, dir)
-	err := r.ParseMultipartForm(maxSize10Mb)
+	err := r.ParseMultipartForm(maxSize20Mb)
 	if err != nil {
 		serveBadRequestError(w, r, "Error: handleUpload: r.ParseMultipartForm() failed with '%s'\n", err)
 		return

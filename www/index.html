@@ -2,12 +2,174 @@
 <html>
 
 <head>
-    <link rel="stylesheet" href="/main.css">
-    <script src="/main.js" defer></script>
-    <script src="//unpkg.com/alpinejs" defer></script>
+    <link rel="stylesheet" href="main.css">
+    <script src="main.js" defer></script>
+    <script src="//unpkg.com/alpinejs@3.3.3/dist/cdn.min.js" defer></script>
+    <script>
+        let dropArea;
+
+        const blaclistedExt = ["exe", "mp4", "avi", "flv", "mpg", "mpeg", "mov", "mkv", "wmv", "dll", "so"];
+
+        function allowedFile(name) {
+            name = name.toLowerCase();
+            let parts = name.split(".");
+            let n = len(parts)
+            if (n == 1) {
+                // no extension
+                return true;
+            }
+            ext = parts[n - 1];
+            return !blaclistedExt.includes(ext);
+        }
+
+        function isZipFile(name) {
+            return name.toLowerCase().endsWith(".zip");
+        }
+
+        const maxFileSize = 1024 * 1024 * 5; // 5 MB
+        const maxUploadSize = 1024 * 1024 * 10; // 10 MB
+
+        // filesWIthPath is []{ file, path }
+        async function uploadFiles(filesWithPath) {
+            // sort by size so that if we skip files due to crossing total size limit,
+            // we'll skip the largest files
+            function cmpBySize(fwp1, fwp2) {
+                const size1 = fwp1.file.size;
+                const size2 = fwp2.file.size;
+                return size1 - size2;
+            }
+            filesWithPath.sort(cmpBySize);
+            let formData = new FormData();
+            let totalSize = 0;
+            let nUploading = 0;
+            let nSkipping = 0;
+            for (const fileWithPath of filesWithPath) {
+                let file = fileWithPath.file;
+                let name = fileWithPath.path;
+                if (!allowedFile(name)) {
+                    nSkipping++;
+                    console.log(`Skipping upload of '${name}' ${humanizeSize(file.size)} because file type not supported`);
+                    continue;
+                }
+                // .zip files are allowed to be bigger
+                const isTooBig = isZipFile(name) ? file.size > maxUploadSize : file.size > maxFileSize;
+                if (isTooBig) {
+                    console.log(`Skipping upload of '${name}' ${humanizeSize(file.size)}`);
+                    nSkipping++;
+                    continue;
+                }
+                if (totalSize + file.size > maxUploadSize) {
+                    nSkipping++;
+                    console.log(`Skipping upload of '${name}' ${humanizeSize(file.size)} because total size would exceed max total size of ${humanizeSize(maxTotalSize)}`);
+                    continue;
+                }
+                // console.log(`Uploading '${name}' ('${file.name}') ${humanizeSize(file.size)}`);
+                formData.append(name, file);
+                totalSize += file.size;
+                nUploading++;
+            }
+            if (nUploading == 0) {
+                showError(`No files to upload out of ${len(filesWithPath)}`);
+                return;
+            }
+
+            showError('');
+
+            let msg = `Uploading ${nUploading} files, ${humanizeSize(totalSize)}`;
+            if (nSkipping > 0) {
+                msg += `, skipping ${nSkipping} not supported files`;
+            }
+            msg += `<span class="spinner"></span>`;
+            showStatus(msg);
+
+            const uploadURL = "/api/upload";
+            const timeStart = +new Date();
+            try {
+                const rsp = await fetch(uploadURL, {
+                    method: 'POST',
+                    body: formData,
+                });
+                if (rsp.status != 200) {
+                    showError(`Failed to upload files. /api/upload failed with status code ${rsp.status}`);
+                    showStatus('');
+                    return;
+                }
+                let uri = await rsp.text();
+                const dur = formatDurSince(timeStart);
+                const totalSizeStr = humanizeSize(totalSize);
+                showStatus(`<p>Uploaded ${nUploading} ${plural(nUploading, "file")}, ${totalSizeStr} in ${dur}.
+ View at <a href="${uri}" target="_blank">${uri}</a>.</p>
+ <p>Will expire in about 2 hrs.</p>`);
+            } catch {
+                showError("Failed to upload files");
+                showStatus('');
+            }
+        }
+
+        async function handleFiles(files) {
+            let filesWithPath = [];
+            for (const file of files) {
+                let fileWithPath = {
+                    file: file,
+                    path: file.name,
+                }
+                filesWithPath.push(fileWithPath);
+            }
+            uploadFiles(filesWithPath);
+        }
+
+
+        async function handleDrop(e) {
+            preventDefaults(e);
+
+            let dt = e.dataTransfer
+            let fileEntries = await getAllFileEntries(dt.items);
+            // convert to File objects
+            let filesWithPath = [];
+            for (let fe of fileEntries) {
+                let path = fe.fullPath;
+                let file = await new Promise((resolve, reject) => {
+                    fe.file(resolve, reject);
+                })
+                let fileWithPath = {
+                    file: file,
+                    path: path,
+                }
+                filesWithPath.push(fileWithPath);
+            }
+            uploadFiles(filesWithPath);
+        }
+
+        function toggleHighlight(e) {
+            if (['dragenter', 'dragover'].includes(e.type)) {
+                dropArea.classList.add("highlight");
+            } else {
+                dropArea.classList.remove("highlight");
+            }
+        }
+
+        function alpineInit() {
+            Alpine.store('data', {
+                statusHTML: '',
+                error: '',
+            })
+        }
+
+        function onload() {
+            preventDefaultsOnElement(document.body);
+            dropArea = getDropContainerElement();
+            preventDefaultsOnElement(dropArea);
+            ['dragenter', 'dragover', 'dravleave', 'drop'].forEach(eventName => {
+                dropArea.addEventListener(eventName, toggleHighlight, false);
+            })
+            dropArea.addEventListener('drop', handleDrop, false)
+        }
+        window.addEventListener("DOMContentLoaded", onload);
+        document.addEventListener('alpine:init', alpineInit);
+    </script>
 </head>
 
-<body onload="onload()">
+<body>
     <div class="nav">
         <div>
             <a href="https://blog.kowalczyk.info/contactme.html" target="_blank">contact</a>
@@ -32,7 +194,7 @@
         Upload a single .html file, multiple files, a directory or a .zip file with html / css / javascript.
     </p>
     <p>
-        The files are private (hosted under random, un-guessable url) and will be deleted after ~2 hrs.
+        The files are private (under random url) and will be deleted after ~2 hrs.
     </p>
     <p>Upload from command line using curl:
         <ul>
@@ -49,7 +211,7 @@
     </p>
     <p>Max size of a single file: 5 MB, max size of all files: 10 MB.</p>
 
-    <div id="drop-area">
+    <div x-data id="drop-area">
         <form class="upload-form" method="post" action="" enctype="miltipart/format-data">
             <p>To upload for instant preview, drag & drop: a file, multiple files, folder or a ZIP file. Or use button below to select files for upload.
             </p>
@@ -57,16 +219,22 @@
             <label class="select-files-button" for="fileElem">Select files for upload</label>
         </form>
     </div>
-
-    <div id="upload-status">
+    <!-- not inside form because drop-area has fixed size and upload-form is sized to 100% of it -->
+    <div x-data>
+        <div x-show="$store.data.statusHTML" x-html="$store.data.statusHTML">
+        </div>
+        <div x-show="$store.data.error" style="color:red">
+        </div>
     </div>
-    <div id="upload-error">
-    </div>
-
+    <script>
+        function siteCountStr(n) {
+            return `${n} ${plural(n, "site")}`;
+        }
+    </script>
     <div id="summary" x-show="data" x-data="{ data: {} }" x-init="data = await loadSummary()">
         Serving
-        <span x-text="data.SitesCount"></span>
-        sites of total size <span x-text="data.SitesSizeStr"></span>
+        <span x-text="siteCountStr(data.SitesCount)"></span>
+        of total size <span x-text="data.SitesSizeStr"></span>
     </div>
 
 </body>

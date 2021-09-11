@@ -75,19 +75,6 @@ body {
     justify-content: center;
 }
 
-#uploading-wrap {
-    display: none;
-}
-
-#not-uploading-wrap {
-    display: none;
-}
-
-#upload-error {
-    display: none;
-    color: red;
-}
-
 .select-files-button {
     display: inline-block;
     padding: 10px;
@@ -105,10 +92,6 @@ body {
     display: none;
 }
 
-#fileElem {
-    display: none;
-}
-
 #summary {
     margin-top: 1em;
 }
@@ -120,4 +103,24 @@ body {
 
 table.tblList>tr>td {
     padding-right: 1em;
+}
+
+@keyframes spinner {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.spinner:after {
+    content: '';
+    box-sizing: border-box;
+    position: absolute;
+    width: 1em;
+    height: 1em;
+    margin-top: 2px;
+    margin-left: 0.5em;
+    border-radius: 50%;
+    border: 2px solid #ccc;
+    border-top-color: #000;
+    animation: spinner .6s linear infinite;
 }

@@ -1,9 +1,3 @@
-let dropArea;
-
-const uploadURL = "/api/upload";
-const maxFileSize = 1024 * 1024 * 5; // 5 MB
-const maxUploadSize = 1024 * 1024 * 10; // 10 MB
-
 function mkel(s) {
     return document.createElement(s);
 }
@@ -16,39 +10,12 @@ function len(o) {
 }
 
 function preventDefaults(e) {
-    // console.log("preventDefaults");
     e.preventDefault()
     e.stopPropagation()
 }
 
 function getDropContainerElement() {
     return document.getElementById("drop-area")
-}
-
-const blaclistedExt = [
-    "exe",
-    "mp4",
-    "avi",
-    "flv",
-    "mpg",
-    "mpeg",
-    "mov",
-    "mkv",
-    "wmv",
-    "dll",
-    "so",
-];
-
-function allowedFile(name) {
-    name = name.toLowerCase();
-    let parts = name.split(".");
-    let n = len(parts)
-    if (n == 1) {
-        // no extension
-        return true;
-    }
-    ext = parts[n - 1];
-    return !blaclistedExt.includes(ext);
 }
 
 // TODO: very primitive, doesn't work for every word
@@ -94,44 +61,14 @@ function onId(id, f) {
     f(el);
 }
 
-function showById(id) {
-    onId(id, el => el.style.display = "block");
-}
-
-function hideById(id) {
-    onId(id, el => el.style.display = "none");
-}
-
 function showError(msg) {
-    onId("upload-error", el => {
-        el.style.display = "block";
-        el.textContent = msg;
-    })
-    hideStatus();
-}
-
-function hideError() {
-    hideById("upload-error");
-}
-
-function hideStatus() {
-    hideById("upload-status");
+    let data = Alpine.store('data');
+    data.error = msg;
 }
 
 function showStatus(msg) {
-    onId("upload-status", el => {
-        el.style.display = "block";
-        //el.textContent = msg;
-        el.innerHTML = msg;
-    })
-}
-
-function highlight(e) {
-    dropArea.classList.add('highlight')
-}
-
-function unhighlight(e) {
-    dropArea.classList.remove('highlight')
+    let data = Alpine.store('data');
+    data.statusHTML = msg;
 }
 
 // Wrap readEntries in a promise to make working with readEntries easier
@@ -174,108 +111,6 @@ async function getAllFileEntries(dataTransferItemList) {
     return fileEntries;
 }
 
-// filesWIthPath is []{ file, path }
-async function uploadFiles(filesWithPath) {
-    // sort by size so that if we skip files due to crossing total size limit,
-    // we'll skip the largest files
-    function cmpBySize(fwp1, fwp2) {
-        const size1 = fwp1.file.size;
-        const size2 = fwp2.file.size;
-        return size1 - size2;
-    }
-    filesWithPath.sort(cmpBySize);
-    let formData = new FormData();
-    let totalSize = 0;
-    let nUploading = 0;
-    let nSkipping = 0;
-    for (const fileWithPath of filesWithPath) {
-        let file = fileWithPath.file;
-        let name = fileWithPath.path;
-        if (!allowedFile(name)) {
-            nSkipping++;
-            console.log(`Skipping upload of '${name}' ${humanizeSize(file.size)} because file type not supported`);
-            continue;
-        }
-        if (file.size > maxFileSize) {
-            console.log(`Skipping upload of '${name}' ${humanizeSize(file.size)}`);
-            nSkipping++;
-            continue;
-        }
-        if (totalSize + file.size > maxUploadSize) {
-            nSkipping++;
-            console.log(`Skipping upload of '${name}' ${humanizeSize(file.size)} because total size would exceed max total size of ${humanizeSize(maxTotalSize)}`);
-            continue;
-        }
-        // console.log(`Uploading '${name}' ('${file.name}') ${humanizeSize(file.size)}`);
-        formData.append(name, file);
-        totalSize += file.size;
-        nUploading++;
-    }
-    if (nUploading == 0) {
-        showError(`No files to upload out of ${len(filesWithPath)}`);
-        return;
-    }
-    hideError();
-
-    let msg = `Uploading ${nUploading} files, ${humanizeSize(totalSize)}`;
-    if (nSkipping > 0) {
-        msg += `, skipping ${nSkipping} not supported files`;
-    }
-    showStatus(msg);
-
-    const timeStart = +new Date();
-    try {
-        const rsp = await fetch(uploadURL, {
-            method: 'POST',
-            body: formData,
-        });
-        if (rsp.status != 200) {
-            showError(`Failed to upload files. /api/upload failed with status code ${rsp.status}`);
-            return;
-        }
-        let uri = await rsp.text();
-        const dur = formatDurSince(timeStart);
-        const totalSizeStr = humanizeSize(totalSize);
-        showStatus(`<p>Uploaded ${nUploading} ${plural(nUploading, "file")}, ${totalSizeStr} in ${dur}. View at <a href="${uri}" target="_blank">${uri}</a>.</p><p>Will expire in about 2 hrs.</p>`);
-    } catch {
-        showError("Failed to upload files");
-    }
-}
-
-async function handleFiles(files) {
-    let filesWithPath = [];
-    for (const file of files) {
-        let fileWithPath = {
-            file: file,
-            path: file.name,
-        }
-        filesWithPath.push(fileWithPath);
-    }
-    uploadFiles(filesWithPath);
-}
-
-
-async function handleDrop(e) {
-    preventDefaults(e);
-
-    let dt = e.dataTransfer
-    let fileEntries = await getAllFileEntries(dt.items);
-    // convert to File objects
-    let filesWithPath = [];
-    for (let fe of fileEntries) {
-        let path = fe.fullPath;
-        let file = await new Promise((resolve, reject) => {
-            fe.file(resolve, reject);
-        })
-        let fileWithPath = {
-            file: file,
-            path: path,
-        }
-        filesWithPath.push(fileWithPath);
-    }
-    uploadFiles(filesWithPath);
-}
-
 function formatDurSince(timeStart) {
     const end = +new Date();
     const durMs = end - timeStart;
@@ -295,29 +130,6 @@ function preventDefaultsOnElement(el) {
     ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
         el.addEventListener(eventName, preventDefaults, false)
     })
-}
-
-function onload() {
-    // prevent dropping files on body from allowing
-    // browser to display the file
-    // preventDefaultsOnElement(document.body);
-    //preventDefaultsOnElement(document.getElementById("body-wrapper"));
-    preventDefaultsOnElement(document.body);
-
-    dropArea = getDropContainerElement();
-    preventDefaultsOnElement(dropArea);
-
-    ['dragenter', 'dragover'].forEach(eventName => {
-        dropArea.addEventListener(eventName, highlight, false);
-    })
-
-    // TODO: why a.forEach() doesn't work
-    let a = ["dragleave", "drop"];
-    a.forEach(eventName => {
-        dropArea.addEventListener(eventName, unhighlight, false);
-    })
-
-    dropArea.addEventListener('drop', handleDrop, false)
 }
 
 async function loadSummary() {

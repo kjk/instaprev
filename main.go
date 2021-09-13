@@ -458,8 +458,8 @@ func doRunServer() {
 }
 
 func deployToRender() {
-	deployURL := os.Getenv("INSTAPREV_DEPLOY_HOOK")
-	panicIf(deployURL == "", "needs env variable INSTAPREV_DEPLOY_HOOK")
+	deployURL := os.Getenv("INSTANT_PREVIEW_DEPLOY_HOOK")
+	panicIf(deployURL == "", "needs env variable INSTANT_PREVIEW_DEPLOY_HOOK")
 	d, err := httpDownload(deployURL)
 	must(err)
 	logf(ctx(), "%s", string(d))

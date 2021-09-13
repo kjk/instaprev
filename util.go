@@ -2,16 +2,35 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/ioutil"
+	"net"
+	"net/http"
 	"os"
 	"runtime"
 	"strings"
+	"time"
 )
 
 func must(err error) {
 	if err != nil {
 		panic(err.Error())
 	}
+}
+
+func panicIf(cond bool, args ...interface{}) {
+	if !cond {
+		return
+	}
+	s := "condition failed"
+	if len(args) > 0 {
+		s = fmt.Sprintf("%s", args[0])
+		if len(args) > 1 {
+			s = fmt.Sprintf(s, args[1:]...)
+		}
+	}
+	panic(s)
 }
 
 func logf(ctx context.Context, format string, args ...interface{}) {
@@ -105,4 +124,41 @@ func trimCommonPrefix(a []string) {
 func fileExists(path string) bool {
 	_, err := os.Lstat(path)
 	return err == nil
+}
+
+// can be used for http.Get() requests with better timeouts. New one must be created
+// for each Get() request
+func newTimeoutClient(connectTimeout time.Duration, readWriteTimeout time.Duration) *http.Client {
+	timeoutDialer := func(cTimeout time.Duration, rwTimeout time.Duration) func(net, addr string) (c net.Conn, err error) {
+		return func(netw, addr string) (net.Conn, error) {
+			conn, err := net.DialTimeout(netw, addr, cTimeout)
+			if err != nil {
+				return nil, err
+			}
+			conn.SetDeadline(time.Now().Add(rwTimeout))
+			return conn, nil
+		}
+	}
+
+	return &http.Client{
+		Transport: &http.Transport{
+			Dial:  timeoutDialer(connectTimeout, readWriteTimeout),
+			Proxy: http.ProxyFromEnvironment,
+		},
+	}
+}
+
+func httpDownload(url string) ([]byte, error) {
+	// default timeout for http.Get() is really long, so dial it down
+	// for both connection and read/write timeouts
+	timeoutClient := newTimeoutClient(time.Second*120, time.Second*120)
+	resp, err := timeoutClient.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return nil, errors.New(fmt.Sprintf("'%s': status code not 200 (%d)", url, resp.StatusCode))
+	}
+	return ioutil.ReadAll(resp.Body)
 }

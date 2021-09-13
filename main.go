@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	tokenLength  = 6                // like transfer.sh
+	tokenLength  = 6 // like transfer.sh
 	timeTwoHours = time.Hour * 2
 )
 
@@ -457,17 +457,34 @@ func doRunServer() {
 	}
 }
 
+func deployToRender() {
+	deployURL := os.Getenv("INSTAPREV_DEPLOY_HOOK")
+	panicIf(deployURL == "", "needs env variable INSTAPREV_DEPLOY_HOOK")
+	d, err := httpDownload(deployURL)
+	must(err)
+	logf(ctx(), "%s", string(d))
+}
+
 func main() {
 	var (
-		flgRun bool
+		flgRun    bool
+		flgDeploy bool
 	)
 	{
 		flag.BoolVar(&flgRun, "run", false, "run the server")
+		flag.BoolVar(&flgDeploy, "deploy", false, "deploy to render.com")
 		flag.Parse()
 	}
+
+	if flgDeploy {
+		deployToRender()
+		return
+	}
+
 	if flgRun {
 		doRunServer()
 		return
 	}
+
 	flag.Usage()
 }

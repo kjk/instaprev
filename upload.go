@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	maxSize20Mb  = 1024 * 1024 * 20 // this is 10 MB in html front-end
+	maxSize20Mb = 1024 * 1024 * 20 // this is 10 MB in html front-end
 )
 
 var blacklistedExt = []string{
@@ -91,6 +91,7 @@ func unpackZipFiles(zipFiles []string, site *Site) error {
 			path := canonicalPath(f.Name)
 			fileNames = append(fileNames, path)
 		}
+		stringsTrimSlashPrefix(fileNames)
 		trimCommonPrefix(fileNames)
 
 		// now extract using fixed-up file names
@@ -297,6 +298,7 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 		serveBadRequestError(w, r, "Error: no files")
 		return
 	}
+	stringsTrimSlashPrefix(paths)
 	trimCommonPrefix(paths)
 
 	var zipFiles []string

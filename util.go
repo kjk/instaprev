@@ -57,6 +57,12 @@ func humanizeSize(i int64) string {
 	return fmt.Sprintf("%d B", i)
 }
 
+func stringsTrimSlashPrefix(a []string) {
+	for i, s := range a {
+		a[i] = strings.TrimLeft(s, `\/`)
+	}
+}
+
 // when dropping a directory, all files have common prefix, which we want to remove
 func trimCommonPrefix(a []string) {
 	if len(a) < 2 {

@@ -347,7 +347,13 @@ func handleIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// give priority to our own files
+	redirectURL := siteMaybeRedirectForPath(r)
+	if redirectURL != "" {
+		logf(r.Context(), "httpIndex: redirectng '%s' => '%s'\n", path, redirectURL)
+		http.Redirect(w, r, redirectURL, http.StatusTemporaryRedirect)
+		return
+	}
+
 	dir := "www"
 	uriPath := path
 	logf(r.Context(), "serveFile: dir: '%s', uriPath: '%s'\n", dir, uriPath)
@@ -366,14 +372,6 @@ func handleIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	referer := r.Header.Get("referer")
-	redirectURL := siteRedirectForPath(referer, r)
-	if redirectURL != "" {
-		logf(r.Context(), "httpIndex: redirectng '%s' => '%s'\n", path, redirectURL)
-		http.Redirect(w, r, redirectURL, http.StatusTemporaryRedirect)
-		return
-	}
-
 	logf(r.Context(), "handleIndex: '%s' not found\n", r.URL)
 	http.NotFound(w, r)
 }
@@ -382,9 +380,10 @@ func handleIndex(w http.ResponseWriter, r *http.Request) {
 // our server
 // we try to deduce from referer which site this request was meant to
 // this builds the url on our site or "" if nothing is matching
-func siteRedirectForPath(referer string, r *http.Request) string {
+func siteMaybeRedirectForPath(r *http.Request) string {
 	// referer is a full URL https://${host}${path}
 	// extract ${path}
+	referer := r.Header.Get("referer")
 	if referer == "" {
 		return ""
 	}

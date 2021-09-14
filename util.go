@@ -82,8 +82,9 @@ func stringsTrimSlashPrefix(a []string) {
 	}
 }
 
-// when dropping a directory, all files have common prefix, which we want to remove
-func trimCommonPrefix(a []string) {
+// when all files have the same dir prefix (e.g. "www/"), we want to remove it
+// this can happen when e.g. drag & dropping a directory
+func trimCommonDirPrefix(a []string) {
 	if len(a) < 2 {
 		return
 	}
@@ -104,24 +105,32 @@ func trimCommonPrefix(a []string) {
 		}
 		return true
 	}
+	// find max common prefix
 	idx := 0
-	for {
-		if isSameCharAt(idx) {
-			idx++
-			continue
-		}
-		if idx == 0 {
-			return
-		}
-		// logf(ctx(), "removing common prefix '%s'\n", a[0][:i])
-		for i, s := range a {
-			a[i] = s[idx:]
-		}
+	for isSameCharAt(idx) {
+		idx++
+	}
+	// backup to '/'
+	s := a[0]
+	didBackup := false
+	for idx > 0 && s[idx] != '/' {
+		idx--
+		didBackup = true
+	}
+	if didBackup && s[idx] == '/' {
+		idx++
+	}
+	if idx == 0 {
 		return
 	}
+	// logf(ctx(), "removing common prefix '%s'\n", a[0][:i])
+	for i, s := range a {
+		a[i] = s[idx:]
+	}
+	return
 }
 
-func fileExists(path string) bool {
+func pathExists(path string) bool {
 	_, err := os.Lstat(path)
 	return err == nil
 }

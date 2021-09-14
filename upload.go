@@ -92,7 +92,7 @@ func unpackZipFiles(zipFiles []string, site *Site) error {
 			fileNames = append(fileNames, path)
 		}
 		stringsTrimSlashPrefix(fileNames)
-		trimCommonPrefix(fileNames)
+		trimCommonDirPrefix(fileNames)
 
 		// now extract using fixed-up file names
 		for i, f := range zr.File {
@@ -299,7 +299,7 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	stringsTrimSlashPrefix(paths)
-	trimCommonPrefix(paths)
+	trimCommonDirPrefix(paths)
 
 	var zipFiles []string
 	for i := 0; i < len(files); i++ {

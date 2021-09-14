@@ -356,12 +356,12 @@ func handleIndex(w http.ResponseWriter, r *http.Request) {
 		fileName = "index.html"
 	}
 	filePath := filepath.Join(dir, uriPath)
-	if fileExists(filePath) {
+	if pathExists(filePath) {
 		http.ServeFile(w, r, filePath)
 		return
 	}
 	filePath += ".html"
-	if fileExists(filePath) {
+	if pathExists(filePath) {
 		http.ServeFile(w, r, filePath)
 		return
 	}

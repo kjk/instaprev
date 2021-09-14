@@ -462,7 +462,7 @@ func deployToRender() {
 	panicIf(deployURL == "", "needs env variable INSTANT_PREVIEW_DEPLOY_HOOK")
 	d, err := httpDownload(deployURL)
 	must(err)
-	logf(ctx(), "%s", string(d))
+	logf(ctx(), "%s\n", string(d))
 }
 
 func main() {

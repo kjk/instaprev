@@ -264,7 +264,8 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 	}
 	token := generateToken(tokenLength)
 	dir := filepath.Join(getDataDir(), token)
-	logf(r.Context(), "handleUpload: '%s', Content-Type: '%s', token: '%s', dir: '%s'\n", r.URL, ct, token, dir)
+	host := r.URL.Hostname()
+	logf(r.Context(), "handleUpload: '%s', Content-Type: '%s', host: '%s', token: '%s', dir: '%s'\n", r.URL, ct, host, token, dir)
 	err := r.ParseMultipartForm(maxSize20Mb)
 	if err != nil {
 		serveBadRequestError(w, r, "Error: handleUpload: r.ParseMultipartForm() failed with '%s'\n", err)

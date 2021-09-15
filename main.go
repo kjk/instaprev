@@ -39,8 +39,9 @@ type Site struct {
 // premium sites are hosted on their own subdomains
 // and need a token to upload
 type premiumSite struct {
-	name  string
-	token string
+	name           string
+	uploadPassword string
+	site           *Site
 }
 
 var (
@@ -55,28 +56,37 @@ var (
 // in the format:
 // site1,token1
 // site2,token2
-func parsePremiumSitesFromEnv() {
-	s := os.Getenv("INSTA_PREV_SITES")
-	s = normalizeNewlines(s)
-	lines := strings.Split(s, "\n")
-	for _, l := range lines {
-		parts := strings.Split(l, ",")
-		if len(parts) != 2 {
-			logf(ctx(), "parsePremiumSitesFromEnv: invalid line '%s'\n", l)
-			continue
+func parsePremiumSites() {
+	logf(ctx(), "parsePremiumsSites:\n")
+	parseSites := func(s string) {
+		s = normalizeNewlines(s)
+		lines := strings.Split(s, "\n")
+		for _, l := range lines {
+			parts := strings.Split(l, ",")
+			if len(parts) != 2 {
+				logf(ctx(), "parsePremiumSitesFromEnv: invalid line '%s'\n", l)
+				continue
+			}
+			name := strings.TrimSpace(parts[0])
+			pwd := strings.TrimSpace(parts[1])
+			if len(name) == 0 || len(pwd) == 0 {
+				logf(ctx(), "parsePremiumSitesFromEnv: invalid line '%s'\n", l)
+				continue
+			}
+			site := &premiumSite{
+				name:           name,
+				uploadPassword: pwd,
+			}
+			logf(ctx(), "parsePremiumSitesFromEnv: name: %s, upload password: %s\n", name, pwd)
+			premiumSites = append(premiumSites, site)
 		}
-		name := strings.TrimSpace(parts[0])
-		token := strings.TrimSpace(parts[1])
-		if len(name) == 0 || len(token) == 0 {
-			logf(ctx(), "parsePremiumSitesFromEnv: invalid line '%s'\n", l)
-			continue
-		}
-		site := &premiumSite{
-			name:  name,
-			token: token,
-		}
-		logf(ctx(), "parsePremiumSitesFromEnv: name: %s, token: %s\n", name, token)
-		premiumSites = append(premiumSites, site)
+	}
+	parseSites(os.Getenv("INSTA_PREV_SITES"))
+	// this is on render.com
+	d, err := os.ReadFile("/etc/secrets/premium_sites.txt")
+	if err == nil {
+		logf(ctx(), "parsePremiumSites: parsing from /etc/secrets/premium_sites.txt")
+		parseSites(string(d))
 	}
 	logf(ctx(), "parsePremiumSitesFromEnv: loaded %d sites\n", len(premiumSites))
 }
@@ -443,7 +453,7 @@ func siteMaybeRedirectForPath(r *http.Request) string {
 }
 
 func doRunServer() {
-	parsePremiumSitesFromEnv()
+	parsePremiumSites()
 
 	httpAddr := fmt.Sprintf(":%d", flgHTTPPort)
 	if isWindows() {
@@ -499,7 +509,7 @@ func doRunServer() {
 func deployToRender() {
 	deployURL := os.Getenv("INSTANT_PREVIEW_DEPLOY_HOOK")
 	panicIf(deployURL == "", "needs env variable INSTANT_PREVIEW_DEPLOY_HOOK")
-	d, err := httpDownload(deployURL)
+	d, err := httpGet(deployURL)
 	must(err)
 	logf(ctx(), "%s\n", string(d))
 }

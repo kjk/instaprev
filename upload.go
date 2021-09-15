@@ -254,9 +254,21 @@ func handleUploadMaybeRaw(w http.ResponseWriter, r *http.Request) {
 	http.ServeContent(w, r, "result.txt", time.Now(), rsp)
 }
 
+func dumpHeaders(r *http.Request) {
+	logf(ctx(), "dumpHeaders:\n")
+	for key, a := range r.Header {
+		if len(a) == 1 {
+			logf(ctx(), "%s: '%s'\n", key, a[0])
+			continue
+		}
+		logf(ctx(), "%s: '%#v'\n", key, a)
+	}
+}
+
 // POST /upload
 // POST /api/upload
 func handleUpload(w http.ResponseWriter, r *http.Request) {
+	dumpHeaders(r)
 	ct := r.Header.Get("content-type")
 	if ct == "" {
 		handleUploadMaybeRaw(w, r)
@@ -265,6 +277,9 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 	token := generateToken(tokenLength)
 	dir := filepath.Join(getDataDir(), token)
 	host := r.URL.Hostname()
+	if host == "" {
+		host = r.Host
+	}
 	logf(r.Context(), "handleUpload: '%s', Content-Type: '%s', host: '%s', token: '%s', dir: '%s'\n", r.URL, ct, host, token, dir)
 	err := r.ParseMultipartForm(maxSize20Mb)
 	if err != nil {

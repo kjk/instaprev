@@ -151,7 +151,7 @@ func newTimeoutClient(connectTimeout time.Duration, readWriteTimeout time.Durati
 	}
 }
 
-func httpDownload(url string) ([]byte, error) {
+func httpGet(url string) ([]byte, error) {
 	// default timeout for http.Get() is really long, so dial it down
 	// for both connection and read/write timeouts
 	timeoutClient := newTimeoutClient(time.Second*120, time.Second*120)

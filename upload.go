@@ -292,7 +292,7 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 		handleUploadMaybeRaw(w, r, site)
 		return
 	}
-	logf(r.Context(), "handleUpload: '%s', Content-Type: '%s', token: '%s', dir: '%s'\n", r.URL, ct, site.token, site.dir)
+	logf(r.Context(), "handleUpload: '%s', Content-Type: '%s', token: '%s', dir: '%s', premium?: %v\n", r.URL, ct, site.token, site.dir, site.premiumName != "")
 	err := r.ParseMultipartForm(maxSize20Mb)
 	if err != nil {
 		serveBadRequestError(w, r, "Error: handleUpload: r.ParseMultipartForm() failed with '%s'\n", err)

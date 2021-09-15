@@ -59,7 +59,7 @@ func canonicalPath(path string) string {
 // updates info in site
 func unpackZipFiles(zipFiles []string, site *Site) error {
 	var lastErr error
-	dir := filepath.Join(getDataDir(), site.token)
+	dir := site.dir
 	for _, zipFile := range zipFiles {
 		logf(ctx(), "unpackZipFiles: unpacking '%s'\n", zipFile)
 		st, err := os.Lstat(zipFile)
@@ -248,14 +248,13 @@ func handleUploadMaybeRaw(w http.ResponseWriter, r *http.Request, site *Site) {
 	http.ServeContent(w, r, "result.txt", time.Now(), rsp)
 }
 
-// "suma.instantpreview.dev" => "suma"
-// returns "" if not a premium site
-func findPremiumSiteFromHost(r *http.Request) *Site {
-	host := r.Host
+// returns "" if not a premium name or no premium site with that name
+// and the name "suma.instantpreview.dev" => "suma"
+func findPremiumSiteFromHost(host string) (*Site, string) {
 	parts := strings.Split(host, ".")
 	if len(parts) != 3 {
-		logf(ctx(), "findPremiumSiteFromHost: invalid r.Host '%s'\n", r.Host)
-		return nil
+		logf(ctx(), "findPremiumSiteFromHost: invalid host '%s'\n", host)
+		return nil, ""
 	}
 	name := strings.ToLower(parts[0])
 	muSites.Lock()
@@ -263,36 +262,52 @@ func findPremiumSiteFromHost(r *http.Request) *Site {
 	for _, site := range sites {
 		if site.premiumName == name {
 			logf(ctx(), "findPremiumSiteFromHost: found site '%s'\n", site.premiumName)
-			return site
+			return site, name
 		}
 	}
-	logf(ctx(), "findPremiumSiteFromHost: no site for host '%s'\n", r.Host)
-	return nil
+	logf(ctx(), "findPremiumSiteFromHost: no site for host '%s'\n", host)
+	return nil, name
 }
 
 // POST /upload
 // POST /api/upload
 func handleUpload(w http.ResponseWriter, r *http.Request) {
-	//dumpHeaders(r)
 	ct := r.Header.Get("content-type")
 
-	site := findPremiumSiteFromHost(r)
-	if site == nil {
-		// generate new, temporary site
-		token := generateToken(tokenLength)
-		site = &Site{
-			token:     token,
-			dir:       filepath.Join(getDataDir(), token),
-			createdOn: time.Now(),
-			isSPA:     isSPA(r),
+	findPremimOrCreateNonPremium := func() *Site {
+		site, domainName := findPremiumSiteFromHost(r.Host)
+		if site == nil {
+			if domainName != "www" {
+				serveErrorStatus(w, r, http.StatusBadRequest, "Error: can't upload to '%s'\n", r.Host)
+				return nil
+			}
+			// generate new, temporary site
+			token := generateToken(tokenLength)
+			site = &Site{
+				token:     token,
+				dir:       filepath.Join(getDataDir(), token),
+				createdOn: time.Now(),
+				isSPA:     isSPA(r),
+			}
+			return site
 		}
+		if !strings.Contains(r.URL.RawQuery, site.uploadPassword) {
+			serveErrorStatus(w, r, http.StatusBadRequest, "Error: invalid password for premium site '%s'\n", r.Host)
+			return nil
+		}
+		return site
+	}
+
+	site := findPremimOrCreateNonPremium()
+	if site == nil {
+		return
 	}
 
 	if ct == "" {
 		handleUploadMaybeRaw(w, r, site)
 		return
 	}
-	logf(r.Context(), "handleUpload: '%s', Content-Type: '%s', token: '%s', dir: '%s', premium?: %v\n", r.URL, ct, site.token, site.dir, site.premiumName != "")
+	logf(r.Context(), "handleUpload: '%s', Content-Type: '%s', token: '%s', dir: '%s', premium?: %v\n", r.URL, ct, site.token, site.dir, site.isPremium())
 	err := r.ParseMultipartForm(maxSize20Mb)
 	if err != nil {
 		serveBadRequestError(w, r, "Error: handleUpload: r.ParseMultipartForm() failed with '%s'\n", err)
@@ -387,11 +402,15 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 	muSites.Unlock()
 
 	var uri string
-	if len(site.files) > 1 {
-		uri = fmt.Sprintf("https://%s/p/%s/", r.Host, site.token)
+	if site.isPremium() {
+		uri = fmt.Sprintf("https://%s/", r.Host)
 	} else {
-		f := site.files[0]
-		uri = fmt.Sprintf("https://%s/p/%s/%s", r.Host, site.token, f.Path)
+		if len(site.files) > 1 {
+			uri = fmt.Sprintf("https://%s/p/%s/", r.Host, site.token)
+		} else {
+			f := site.files[0]
+			uri = fmt.Sprintf("https://%s/p/%s/%s", r.Host, site.token, f.Path)
+		}
 	}
 	rsp := bytes.NewReader([]byte(uri))
 	http.ServeContent(w, r, "result.txt", time.Now(), rsp)

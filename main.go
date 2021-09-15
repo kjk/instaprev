@@ -45,6 +45,10 @@ type Site struct {
 	uploadPassword string
 }
 
+func (s *Site) isPremium() bool {
+	return s.premiumName != ""
+}
+
 var (
 	flgHTTPPort           = 5550
 	sites                 []*Site
@@ -239,14 +243,13 @@ func handleAPISites(w http.ResponseWriter, r *http.Request) {
 }
 
 func expireSitesLoop() {
-	dataDir := getDataDir()
 	for {
 		time.Sleep(time.Hour)
 		var newSites []*Site
 		muSites.Lock()
 		nExpired := 0
 		for _, site := range sites {
-			if site.premiumName != "" {
+			if site.isPremium() {
 				// premium sites do not expire
 				continue
 			}
@@ -254,9 +257,8 @@ func expireSitesLoop() {
 			if elapsed < timeTwoHours {
 				newSites = append(newSites, site)
 			} else {
-				dir := filepath.Join(dataDir, site.token)
-				os.RemoveAll(dir)
-				logf(ctx(), "expired site '%s' and deleted directory '%s'\n", site.token, dir)
+				os.RemoveAll(site.dir)
+				logf(ctx(), "expired site '%s' and deleted directory '%s'\n", site.token, site.dir)
 				nExpired++
 			}
 		}
@@ -287,16 +289,21 @@ func findSiteByPath(path string) *Site {
 	return findSiteByToken(token)
 }
 
-func servePathInSite(w http.ResponseWriter, r *http.Request, path string, site *Site) {
-	rest := path[9:] // strip /p/${token}
-	if rest == "" {
+func servePathInSite(w http.ResponseWriter, r *http.Request, site *Site, path string) {
+	var realPath string
+	if site.isPremium() {
+		realPath = path
+	} else {
+		realPath = path[9:] // strip /p/${token}
+	}
+	if realPath == "" {
 		// TODO: maybe also add query params etc.
 		newURL := path + "/"
 		logf(r.Context(), "servePathInSite: redirecting '%s' to '%s'\n", path, newURL)
 		http.Redirect(w, r, newURL, http.StatusTemporaryRedirect) // 307
 		return
 	}
-	toFind := strings.TrimPrefix(rest, "/")
+	toFind := strings.TrimPrefix(realPath, "/")
 	logf(r.Context(), "servePathInSite: toFind: '%s'\n", toFind)
 
 	// in SPA mode or with custom 404.html this is a special url that shows files
@@ -310,7 +317,10 @@ func servePathInSite(w http.ResponseWriter, r *http.Request, path string, site *
 	if toFind == "_spa" {
 		// toggle SPA mode
 		site.isSPA = !site.isSPA
-		redirectURL := fmt.Sprintf("/p/%s/_dir", site.token)
+		redirectURL := "_dir"
+		if !site.isPremium() {
+			redirectURL = fmt.Sprintf("/p/%s/_dir", site.token)
+		}
 		http.Redirect(w, r, redirectURL, http.StatusTemporaryRedirect)
 		return
 	}
@@ -337,7 +347,7 @@ func servePathInSite(w http.ResponseWriter, r *http.Request, path string, site *
 		}
 	}
 
-	logf(r.Context(), "servePathInSite: path: '%s', rest: '%s', toFind: '%s', hasIndex: %v, has404: %v\n", path, rest, toFind, fileIndex != nil, file404 != nil)
+	logf(r.Context(), "servePathInSite: path: '%s', rest: '%s', toFind: '%s', hasIndex: %v, has404: %v\n", path, realPath, toFind, fileIndex != nil, file404 != nil)
 	toFind2 := toFind + ".html" // also serve clean urls with ".html" stripped off
 	findFileByPath := func() *siteFile {
 		for _, f := range site.files {
@@ -382,7 +392,7 @@ func handlePreview(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	servePathInSite(w, r, path, site)
+	servePathInSite(w, r, site, path)
 }
 
 func handleIndex(w http.ResponseWriter, r *http.Request) {
@@ -392,6 +402,12 @@ func handleIndex(w http.ResponseWriter, r *http.Request) {
 	}
 
 	path := r.URL.Path
+	site, _ := findPremiumSiteFromHost(r.Host)
+	if site != nil {
+		servePathInSite(w, r, site, path)
+		return
+	}
+
 	if strings.HasPrefix(path, "/p/") {
 		handlePreview(w, r)
 		return

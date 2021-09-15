@@ -278,7 +278,7 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 		site, domainName := findPremiumSiteFromHost(r.Host)
 		if site == nil {
 			if domainName != "www" {
-				serveErrorStatus(w, r, http.StatusBadRequest, "Error: can't upload to '%s'\n", r.Host)
+				serveErrorStatus(w, r, http.StatusBadRequest, "Error: can't upload to '%s'. Use https://www.instantpreview.dev or double-check name of premium site\n", r.Host)
 				return nil
 			}
 			// generate new, temporary site

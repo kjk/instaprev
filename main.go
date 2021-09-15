@@ -396,6 +396,14 @@ func handlePreview(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleIndex(w http.ResponseWriter, r *http.Request) {
+	defer func() {
+		if p := recover(); p != nil {
+			serveErrorStatus(w, r, http.StatusInternalServerError, "Error: panic serving '%s' with:\n%s\n", r.URL, p)
+			// re-panic
+			panic(r)
+		}
+	}()
+
 	if r.Method == http.MethodPost || r.Method == http.MethodPut {
 		handleUpload(w, r)
 		return

@@ -400,8 +400,9 @@ func handleIndex(w http.ResponseWriter, r *http.Request) {
 	defer func() {
 		if p := recover(); p != nil {
 			logf(ctx(), "handleIndex: caught panic serving URL '%s'\n", r.URL)
-			serveErrorStatus(w, r, http.StatusInternalServerError, "Error: panic serving '%s' with:\n%s\n", r.URL, p)
-			debug.PrintStack()
+			stack := debug.Stack()
+			serveErrorStatus(w, r, http.StatusInternalServerError, "Error: panic serving '%s' with:\n%s\n%s\n", r.URL, p, string(stack))
+			os.Stderr.Write(stack)
 		}
 	}()
 

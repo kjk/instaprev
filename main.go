@@ -46,10 +46,11 @@ type Site struct {
 }
 
 var (
-	flgHTTPPort   = 5550
-	sites         []*Site
-	muSites       sync.Mutex
-	dataDirCached string
+	flgHTTPPort           = 5550
+	sites                 []*Site
+	muSites               sync.Mutex
+	dataDirCached         string
+	premiumSitesDirCached string
 )
 
 // for now we store premium sites in an env variable INSTA_PREV_SITES
@@ -71,15 +72,20 @@ func parsePremiumSites() {
 				logf(ctx(), "parsePremiumsSites: invalid line '%s'\n", l)
 				continue
 			}
+			// TODO: sanitize name to be url and dir name compatible
 			name := strings.ToLower(strings.TrimSpace(parts[0]))
 			pwd := strings.TrimSpace(parts[1])
 			if len(name) == 0 || len(pwd) == 0 {
 				logf(ctx(), "parsePremiumsSites: invalid line '%s'\n", l)
 				continue
 			}
+			dir := filepath.Join(getPremiumSitesDir(), name)
 			site := &Site{
+				token:          name,
 				premiumName:    name,
 				uploadPassword: pwd,
+				dir:            dir,
+				createdOn:      time.Now(), // TODO: not really
 			}
 			logf(ctx(), "parsePremiumsSites: name: %s, upload password: %s\n", name, pwd)
 			sites = append(sites, site)
@@ -93,6 +99,19 @@ func parsePremiumSites() {
 		parseSites(string(d))
 	}
 	logf(ctx(), "parsePremiumSitesFromEnv: loaded %d sites\n", len(sites))
+}
+
+func getPremiumSitesDir() string {
+	if premiumSitesDirCached != "" {
+		return premiumSitesDirCached
+	}
+	// on render.com
+	if dirExists("/var/data") {
+		premiumSitesDirCached = "/var/data"
+	} else {
+		premiumSitesDirCached = getDataDir()
+	}
+	return premiumSitesDirCached
 }
 
 func getDataDir() string {
@@ -227,6 +246,10 @@ func expireSitesLoop() {
 		muSites.Lock()
 		nExpired := 0
 		for _, site := range sites {
+			if site.premiumName != "" {
+				// premium sites do not expire
+				continue
+			}
 			elapsed := time.Since(site.createdOn)
 			if elapsed < timeTwoHours {
 				newSites = append(newSites, site)
@@ -475,7 +498,7 @@ func doRunServer() {
 	}
 	httpSrv.Addr = httpAddr
 	ctx := ctx()
-	logf(ctx, "Starting server on http://%s, data dir: '%s'\n", httpAddr, getDataDir())
+	logf(ctx, "Starting server on http://%s, data dir: '%s', premium data dir: '%s'\n", httpAddr, getDataDir(), getPremiumSitesDir())
 	chServerClosed := make(chan bool, 1)
 	go func() {
 		err := httpSrv.ListenAndServe()

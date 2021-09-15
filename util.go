@@ -52,7 +52,7 @@ func ctx() context.Context {
 func normalizeNewlines(s string) string {
 	// replace CR LF (windows) with LF (unix)
 	s = strings.Replace(s, string([]byte{13, 10}), "\n", -1)
-	// replace CF (mac) with LF (unix)
+	// replace CR (mac) with LF (unix)
 	s = strings.Replace(s, string([]byte{13}), "\n", -1)
 	return s
 }
@@ -129,6 +129,11 @@ func pathExists(path string) bool {
 	return err == nil
 }
 
+func dirExists(path string) bool {
+	st, err := os.Lstat(path)
+	return err == nil && st.IsDir()
+}
+
 // can be used for http.Get() requests with better timeouts. New one must be created
 // for each Get() request
 func newTimeoutClient(connectTimeout time.Duration, readWriteTimeout time.Duration) *http.Client {
@@ -164,4 +169,15 @@ func httpGet(url string) ([]byte, error) {
 		return nil, errors.New(fmt.Sprintf("'%s': status code not 200 (%d)", url, resp.StatusCode))
 	}
 	return ioutil.ReadAll(resp.Body)
+}
+
+func dumpHeaders(r *http.Request) {
+	logf(ctx(), "dumpHeaders:\n")
+	for key, a := range r.Header {
+		if len(a) == 1 {
+			logf(ctx(), "%s: '%s'\n", key, a[0])
+			continue
+		}
+		logf(ctx(), "%s: '%#v'\n", key, a)
+	}
 }

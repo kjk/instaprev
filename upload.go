@@ -165,7 +165,7 @@ func isSPA(r *http.Request) bool {
 }
 
 // this is an upload of a raw file. try to auto-detect what it is
-func handleUploadMaybeRaw(w http.ResponseWriter, r *http.Request) {
+func handleUploadMaybeRaw(w http.ResponseWriter, r *http.Request, site *Site) {
 	token := generateToken(tokenLength)
 	tmpPath := filepath.Join(getDataDir(), token+".dat")
 	defer os.Remove(tmpPath)
@@ -188,12 +188,6 @@ func handleUploadMaybeRaw(w http.ResponseWriter, r *http.Request) {
 		logf(r.Context(), "handleUploadMaybeRaw: f.Close() failed with '%s'\n", err)
 		http.NotFound(w, r)
 		return
-	}
-	site := &Site{
-		token:     token,
-		createdOn: time.Now(),
-		totalSize: 0,
-		isSPA:     isSPA(r),
 	}
 
 	path := r.URL.Path
@@ -254,17 +248,6 @@ func handleUploadMaybeRaw(w http.ResponseWriter, r *http.Request) {
 	http.ServeContent(w, r, "result.txt", time.Now(), rsp)
 }
 
-func dumpHeaders(r *http.Request) {
-	logf(ctx(), "dumpHeaders:\n")
-	for key, a := range r.Header {
-		if len(a) == 1 {
-			logf(ctx(), "%s: '%s'\n", key, a[0])
-			continue
-		}
-		logf(ctx(), "%s: '%#v'\n", key, a)
-	}
-}
-
 // "suma.instantpreview.dev" => "suma"
 // returns "" if not a premium site
 func findPremiumSiteFromHost(r *http.Request) *Site {
@@ -279,28 +262,37 @@ func findPremiumSiteFromHost(r *http.Request) *Site {
 	defer muSites.Unlock()
 	for _, site := range sites {
 		if site.premiumName == name {
+			logf(ctx(), "findPremiumSiteFromHost: found site '%s'\n", site.premiumName)
 			return site
 		}
 	}
+	logf(ctx(), "findPremiumSiteFromHost: no site for host '%s'\n", r.Host)
 	return nil
 }
 
 // POST /upload
 // POST /api/upload
 func handleUpload(w http.ResponseWriter, r *http.Request) {
-	dumpHeaders(r)
+	//dumpHeaders(r)
 	ct := r.Header.Get("content-type")
+
+	site := findPremiumSiteFromHost(r)
+	if site == nil {
+		// generate new, temporary site
+		token := generateToken(tokenLength)
+		site = &Site{
+			token:     token,
+			dir:       filepath.Join(getDataDir(), token),
+			createdOn: time.Now(),
+			isSPA:     isSPA(r),
+		}
+	}
+
 	if ct == "" {
-		handleUploadMaybeRaw(w, r)
+		handleUploadMaybeRaw(w, r, site)
 		return
 	}
-	token := generateToken(tokenLength)
-	dir := filepath.Join(getDataDir(), token)
-	host := r.URL.Hostname()
-	if host == "" {
-		host = r.Host
-	}
-	logf(r.Context(), "handleUpload: '%s', Content-Type: '%s', host: '%s', token: '%s', dir: '%s'\n", r.URL, ct, host, token, dir)
+	logf(r.Context(), "handleUpload: '%s', Content-Type: '%s', token: '%s', dir: '%s'\n", r.URL, ct, site.token, site.dir)
 	err := r.ParseMultipartForm(maxSize20Mb)
 	if err != nil {
 		serveBadRequestError(w, r, "Error: handleUpload: r.ParseMultipartForm() failed with '%s'\n", err)
@@ -337,6 +329,7 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 	stringsTrimSlashPrefix(paths)
 	trimCommonDirPrefix(paths)
 
+	dir := site.dir
 	var zipFiles []string
 	for i := 0; i < len(files); i++ {
 		pathOnDisk := filepath.Join(dir, files[i].Path)
@@ -383,13 +376,8 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 	}
 	logf(r.Context(), "handleUpload: %d files of total size %s\n", len(files), formatSize(totalSize))
 
-	site := &Site{
-		token:     token,
-		createdOn: time.Now(),
-		files:     files,
-		totalSize: totalSize,
-		isSPA:     isSPA(r),
-	}
+	site.files = files
+	site.totalSize = totalSize
 
 	// TODO: decide if I should delete the zip file after unpacking
 	_ = unpackZipFiles(zipFiles, site)
@@ -400,10 +388,10 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 
 	var uri string
 	if len(site.files) > 1 {
-		uri = fmt.Sprintf("https://%s/p/%s/", r.Host, token)
+		uri = fmt.Sprintf("https://%s/p/%s/", r.Host, site.token)
 	} else {
 		f := site.files[0]
-		uri = fmt.Sprintf("https://%s/p/%s/%s", r.Host, token, f.Path)
+		uri = fmt.Sprintf("https://%s/p/%s/%s", r.Host, site.token, f.Path)
 	}
 	rsp := bytes.NewReader([]byte(uri))
 	http.ServeContent(w, r, "result.txt", time.Now(), rsp)

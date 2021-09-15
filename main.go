@@ -29,25 +29,25 @@ type siteFile struct {
 
 // describes a single website
 type Site struct {
-	token     string
+	token string
+	// where files are stored
+	// ${dataDir}/${token} for temporary sites
+	// ${premiumDataDir}/${premiumName} for premium sites
+	dir       string
 	createdOn time.Time
 	totalSize int64
 	files     []*siteFile
 	isSPA     bool
-}
 
-// premium sites are hosted on their own subdomains
-// and need a token to upload
-type premiumSite struct {
-	name           string
+	// premium sites are hosted on their own subdomains
+	// and need a token to upload
+	premiumName    string
 	uploadPassword string
-	site           *Site
 }
 
 var (
 	flgHTTPPort   = 5550
 	sites         []*Site
-	premiumSites  []*premiumSite
 	muSites       sync.Mutex
 	dataDirCached string
 )
@@ -62,33 +62,37 @@ func parsePremiumSites() {
 		s = normalizeNewlines(s)
 		lines := strings.Split(s, "\n")
 		for _, l := range lines {
+			l = strings.TrimSpace(l)
+			if l == "" {
+				continue
+			}
 			parts := strings.Split(l, ",")
 			if len(parts) != 2 {
-				logf(ctx(), "parsePremiumSitesFromEnv: invalid line '%s'\n", l)
+				logf(ctx(), "parsePremiumsSites: invalid line '%s'\n", l)
 				continue
 			}
-			name := strings.TrimSpace(parts[0])
+			name := strings.ToLower(strings.TrimSpace(parts[0]))
 			pwd := strings.TrimSpace(parts[1])
 			if len(name) == 0 || len(pwd) == 0 {
-				logf(ctx(), "parsePremiumSitesFromEnv: invalid line '%s'\n", l)
+				logf(ctx(), "parsePremiumsSites: invalid line '%s'\n", l)
 				continue
 			}
-			site := &premiumSite{
-				name:           name,
+			site := &Site{
+				premiumName:    name,
 				uploadPassword: pwd,
 			}
-			logf(ctx(), "parsePremiumSitesFromEnv: name: %s, upload password: %s\n", name, pwd)
-			premiumSites = append(premiumSites, site)
+			logf(ctx(), "parsePremiumsSites: name: %s, upload password: %s\n", name, pwd)
+			sites = append(sites, site)
 		}
 	}
 	parseSites(os.Getenv("INSTA_PREV_SITES"))
 	// this is on render.com
 	d, err := os.ReadFile("/etc/secrets/premium_sites.txt")
 	if err == nil {
-		logf(ctx(), "parsePremiumSites: parsing from /etc/secrets/premium_sites.txt")
+		logf(ctx(), "parsePremiumSites: parsing from /etc/secrets/premium_sites.txt\n")
 		parseSites(string(d))
 	}
-	logf(ctx(), "parsePremiumSitesFromEnv: loaded %d sites\n", len(premiumSites))
+	logf(ctx(), "parsePremiumSitesFromEnv: loaded %d sites\n", len(sites))
 }
 
 func getDataDir() string {

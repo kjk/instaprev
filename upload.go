@@ -265,6 +265,26 @@ func dumpHeaders(r *http.Request) {
 	}
 }
 
+// "suma.instantpreview.dev" => "suma"
+// returns "" if not a premium site
+func findPremiumSiteFromHost(r *http.Request) *Site {
+	host := r.Host
+	parts := strings.Split(host, ".")
+	if len(parts) != 3 {
+		logf(ctx(), "findPremiumSiteFromHost: invalid r.Host '%s'\n", r.Host)
+		return nil
+	}
+	name := strings.ToLower(parts[0])
+	muSites.Lock()
+	defer muSites.Unlock()
+	for _, site := range sites {
+		if site.premiumName == name {
+			return site
+		}
+	}
+	return nil
+}
+
 // POST /upload
 // POST /api/upload
 func handleUpload(w http.ResponseWriter, r *http.Request) {

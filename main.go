@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 	"sync"
 	"syscall"
@@ -398,9 +399,9 @@ func handlePreview(w http.ResponseWriter, r *http.Request) {
 func handleIndex(w http.ResponseWriter, r *http.Request) {
 	defer func() {
 		if p := recover(); p != nil {
+			logf(ctx(), "handleIndex: caught panic serving URL '%s'\n", r.URL)
 			serveErrorStatus(w, r, http.StatusInternalServerError, "Error: panic serving '%s' with:\n%s\n", r.URL, p)
-			// re-panic
-			panic(r)
+			debug.PrintStack()
 		}
 	}()
 

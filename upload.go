@@ -344,9 +344,9 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 		}
 		fr.Close()
 		totalSize += fh.Size
-		logf(r.Context(), "handleUpload: file '%s' (canonical: '%s'), name: '%s' of size %s saved as '%s'\n", file.pathInForm, file.Path, fh.Filename, humanizeSize(fh.Size), pathOnDisk)
+		logf(r.Context(), "handleUpload: file '%s' (canonical: '%s'), name: '%s' of size %s saved as '%s'\n", file.pathInForm, file.Path, fh.Filename, formatSize(fh.Size), pathOnDisk)
 	}
-	logf(r.Context(), "handleUpload: %d files of total size %s\n", len(files), humanizeSize(totalSize))
+	logf(r.Context(), "handleUpload: %d files of total size %s\n", len(files), formatSize(totalSize))
 
 	site := &Site{
 		token:     token,

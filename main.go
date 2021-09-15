@@ -36,12 +36,50 @@ type Site struct {
 	isSPA     bool
 }
 
+// premium sites are hosted on their own subdomains
+// and need a token to upload
+type premiumSite struct {
+	name  string
+	token string
+}
+
 var (
 	flgHTTPPort   = 5550
 	sites         []*Site
+	premiumSites  []*premiumSite
 	muSites       sync.Mutex
 	dataDirCached string
 )
+
+// for now we store premium sites in an env variable INSTA_PREV_SITES
+// in the format:
+// site1,token1
+// site2,token2
+func parsePremiumSitesFromEnv() {
+	s := os.Getenv("INSTA_PREV_SITES")
+	s = normalizeNewlines(s)
+	lines := strings.Split(s, "\n")
+	for _, l := range lines {
+		parts := strings.Split(l, ",")
+		if len(parts) != 2 {
+			logf(ctx(), "parsePremiumSitesFromEnv: invalid line '%s'\n", l)
+			continue
+		}
+		name := strings.TrimSpace(parts[0])
+		token := strings.TrimSpace(parts[1])
+		if len(name) == 0 || len(token) == 0 {
+			logf(ctx(), "parsePremiumSitesFromEnv: invalid line '%s'\n", l)
+			continue
+		}
+		site := &premiumSite{
+			name:  name,
+			token: token,
+		}
+		logf(ctx(), "parsePremiumSitesFromEnv: name: %s, token: %s\n", name, token)
+		premiumSites = append(premiumSites, site)
+	}
+	logf(ctx(), "parsePremiumSitesFromEnv: loaded %d sites\n", len(premiumSites))
+}
 
 func getDataDir() string {
 	if dataDirCached != "" {
@@ -135,7 +173,7 @@ func handleAPISummary(w http.ResponseWriter, r *http.Request) {
 	}{
 		SitesCount:   sitesCount,
 		SitesSize:    sitesSize,
-		SitesSizeStr: humanizeSize(sitesSize),
+		SitesSizeStr: formatSize(sitesSize),
 	}
 	serveJSON(w, r, summary)
 }
@@ -405,6 +443,8 @@ func siteMaybeRedirectForPath(r *http.Request) string {
 }
 
 func doRunServer() {
+	parsePremiumSitesFromEnv()
+
 	httpAddr := fmt.Sprintf(":%d", flgHTTPPort)
 	if isWindows() {
 		// prevents windows firewall warning

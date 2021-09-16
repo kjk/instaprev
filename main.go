@@ -96,10 +96,10 @@ func parsePremiumSites() {
 				totalSize:      getDirectorySize(dir),
 			}
 			st, err := os.Lstat(dir)
-			if err != nil {
+			if err == nil {
 				site.createdOn = st.ModTime()
 			}
-			logf(ctx(), "parsePremiumsSites: name: %s, upload password: %s\n", name, pwd)
+			logf(ctx(), "parsePremiumsSites: name: %s, upload password: %s, totalSize: %s\n", name, pwd, formatSize(site.totalSize))
 			sites = append(sites, site)
 		}
 	}

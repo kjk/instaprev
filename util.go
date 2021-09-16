@@ -82,6 +82,14 @@ func trimCommonDirPrefix(a []string) {
 	if len(a) < 2 {
 		return
 	}
+	if true {
+		logf(ctx(), "trimCommonDirPrefix:\n")
+		for _, s := range a {
+			logf(ctx(), "%s\n", s)
+		}
+		logf(ctx(), "\n")
+	}
+
 	isSameCharAt := func(idx int) bool {
 		var c byte
 		for n, s := range a {
@@ -104,10 +112,14 @@ func trimCommonDirPrefix(a []string) {
 	for isSameCharAt(idx) {
 		idx++
 	}
+	if idx == 0 {
+		return
+	}
+
 	// backup to '/'
 	s := a[0]
 	didBackup := false
-	for idx > 0 && s[idx] != '/' {
+	for idx > 0 && s[idx-1] != '/' {
 		idx--
 		didBackup = true
 	}

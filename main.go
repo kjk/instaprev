@@ -70,7 +70,7 @@ func getSiteFilesFromDir(dir string) ([]*siteFile, int64) {
 			return err
 		}
 		i, err := d.Info()
-		name := path[len(dir):]
+		name := path[len(dir)+1:]
 		site := &siteFile{
 			Path:       name,
 			Size:       i.Size(),

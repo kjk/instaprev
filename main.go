@@ -186,7 +186,8 @@ func handleAPISiteFiles(w http.ResponseWriter, r *http.Request) {
 			http.NotFound(w, r)
 			return
 		}
-
+	} else {
+		logf(ctx(), "handleAPISiteFiles: '%s', premium site: %s\n", r.URL.Path, site.premiumName)
 	}
 
 	v := &siteFilesResult{

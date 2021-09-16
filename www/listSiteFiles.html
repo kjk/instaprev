@@ -12,7 +12,14 @@
         async function initAlpine() {
             console.log("initAlpine");
             let uri = window.location;
-            name = uri.pathname.substr(3, 6); // extract /p/${name}/
+            let parts = window.location.hostname.split(".");
+            let name = uri.pathname.substr(3, 6); // extract /p/${name}/
+            if ((len(parts) == 3) && parts[0] != "www") {
+                // "foo.instantpreview.dev" => "foo"
+                name = parts[0];
+            }
+            console.log("site name:", name);
+
             let apiURL = `https://www.instantpreview.dev/api/site-info.json?name=${name}`;
             Alpine.store('site', {
                 files: [],

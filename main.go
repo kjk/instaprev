@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"os/signal"
@@ -156,7 +157,10 @@ func serveErrorStatus(w http.ResponseWriter, r *http.Request, status int, s stri
 	w.Header().Set("Content-Type", "text/plain")
 	w.Header().Set("Content-Length", fmt.Sprintf("%d", len(s)))
 	w.WriteHeader(http.StatusBadRequest)
-	w.Write([]byte(s))
+	if !strings.HasSuffix(s, "\n") {
+		s = s + "\n"
+	}
+	io.WriteString(w, s)
 }
 
 func serveBadRequestError(w http.ResponseWriter, r *http.Request, s string, args ...interface{}) {

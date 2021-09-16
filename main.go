@@ -120,6 +120,7 @@ func parsePremiumSites() {
 				isPremium:      true,
 				totalSize:      totalSize,
 				files:          files,
+				isSPA:          true,
 			}
 			st, err := os.Lstat(dir)
 			if err == nil {

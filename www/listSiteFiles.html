@@ -4,19 +4,20 @@
 <head>
     <link rel="stylesheet" href="https://www.instantpreview.dev/main.css">
     <script src="https://unpkg.com/alpinejs@3.3.3/dist/cdn.min.js" defer></script>
-    <script src="https://www.instantpreview.dev/main.js" defer></script>
     <script>
         //console.log("listSiteFiles.html, window.location:", window.location);
 
-        let name;
+        let name = "";
+        let isPremium = false;
         async function initAlpine() {
             console.log("initAlpine");
             let uri = window.location;
             let parts = window.location.hostname.split(".");
-            let name = uri.pathname.substr(3, 6); // extract /p/${name}/
-            if ((len(parts) == 3) && parts[0] != "www") {
+            name = uri.pathname.substr(3, 6); // extract /p/${name}/
+            if ((parts.length == 3) && parts[0] != "www") {
                 // "foo.instantpreview.dev" => "foo"
                 name = parts[0];
+                isPremium = true;
             }
             console.log("site name:", name);
 
@@ -25,6 +26,7 @@
                 files: [],
                 isSPA: false,
                 name: name,
+                missingFilePath: window.location.pathname,
                 async init() {
                     //console.log("starting fetch:", apiURL);
                     let rsp = await fetch(apiURL);
@@ -51,26 +53,21 @@
         }
 
         function fileLink(file) {
+            if (isPremium) {
+                return `<a href="${file.Path}">${file.Path}</a>`;
+            }
             let baseURL = `/p/${name}/`;
             let fullURL = baseURL + file.Path;
-            let html = `<a href="${fullURL}">${file.Path}</a>`;
-            return html;
+            return `<a href="${fullURL}">${file.Path}</a>`;
         }
 
         function toggleSpaLink() {
+            // TODO: what to do for premium?
             console.log("toggleSpaLink");
             let uri = `/p/${name}/_spa`;
             return `&nbsp;<a href="${uri}">toggle SPA</a>`;
         }
 
-        function init() {
-            console.log("init");
-            let path = window.location.pathname;
-            const el = document.getElementById("fileId");
-            el.textContent = path;
-        }
-
-        window.addEventListener("DOMContentLoaded", init);
         document.addEventListener('alpine:init', initAlpine);
     </script>
 </head>
@@ -78,7 +75,7 @@
 <body>
     <div id="body-wrapper" x-data>
         <p>
-            <a href="/">Home</a> / File <span id="fileId"></span> not found on this site.
+            <a href="/">Home</a> / File <span x-text="$store.site.missingFilePath"></span> not found on this site.
         </p>
         <div style="display: flex; flex-direction: row;">
             <div>Is site Single Page Application?&nbsp;</div>

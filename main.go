@@ -523,8 +523,6 @@ func siteMaybeRedirectForPath(r *http.Request) string {
 }
 
 func doRunServer() {
-	parsePremiumSites()
-
 	httpAddr := fmt.Sprintf(":%d", flgHTTPPort)
 	if isWindows() {
 		// prevents windows firewall warning
@@ -542,6 +540,8 @@ func doRunServer() {
 	httpSrv.Addr = httpAddr
 	ctx := ctx()
 	logf(ctx, "Starting server on http://%s, data dir: '%s', premium data dir: '%s'\n", httpAddr, getDataDir(), getPremiumSitesDir())
+	parsePremiumSites()
+
 	chServerClosed := make(chan bool, 1)
 	go func() {
 		err := httpSrv.ListenAndServe()

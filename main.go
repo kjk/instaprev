@@ -214,7 +214,7 @@ func handleAPISiteFiles(w http.ResponseWriter, r *http.Request) {
 		name := r.FormValue("name")
 		logf(r.Context(), "handleAPISiteFiles: '%s', name: '%s'\n", r.URL, name)
 		if name == "" {
-			serveBadRequestError(w, r, "Error: missing 'name' arg")
+			serveBadRequestError(w, r, "Error: missing 'name' argument to /api/site-info.json")
 			return
 		}
 		site := findSiteByName(name)
@@ -223,7 +223,17 @@ func handleAPISiteFiles(w http.ResponseWriter, r *http.Request) {
 			http.NotFound(w, r)
 			return
 		}
+	} else {
+		logf(ctx(), "handleAPISiteFiles: found premium site %#v\n", site)
 	}
+
+	if site == nil {
+		logf(ctx(), "handleAPISiteFiles: didn't find size. but how?\n")
+	} else {
+		logf(ctx(), "handleAPISiteFiles: did find size!\n")
+	}
+
+	logf(ctx(), "handleAPISiteFiles: site %#v\n", site)
 
 	logf(ctx(), "handleAPISiteFiles: '%s', site: %s, premium?: %v\n", r.URL.Path, site.name, site.isPremium)
 	v := &siteFilesResult{
@@ -466,6 +476,12 @@ func handleIndex(w http.ResponseWriter, r *http.Request) {
 		// request for premium site but no such site available
 		filePath := filepath.Join("www", "noPremiumSite.html")
 		http.ServeFile(w, r, filePath)
+		return
+	}
+
+	// handle explicitly for less logging
+	if path == "/favicon.ico" {
+		http.NotFound(w, r)
 		return
 	}
 

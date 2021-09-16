@@ -32,11 +32,12 @@ import (
 
 const (
 	tokenSymbols = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+	tokenLength  = 6 // like transfer.sh
 )
 
-func generateToken(length int) string {
+func generateRandomName() string {
 	result := ""
-	for i := 0; i < length; i++ {
+	for i := 0; i < tokenLength; i++ {
 		x := rand.Intn(len(tokenSymbols) - 1)
 		result = string(tokenSymbols[x]) + result
 	}

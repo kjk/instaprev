@@ -8,16 +8,16 @@
     <script>
         //console.log("listSiteFiles.html, window.location:", window.location);
 
-        let token;
+        let name;
         async function initAlpine() {
             console.log("initAlpine");
             let uri = window.location;
-            token = uri.pathname.substr(3, 6);
-            let apiURL = `/api/site-info.json?token=${token}`;
+            name = uri.pathname.substr(3, 6); // extract /p/${name}/
+            let apiURL = `https://www.instantpreview.dev/api/site-info.json?name=${name}`;
             Alpine.store('site', {
                 files: [],
                 isSPA: false,
-                token: token,
+                name: name,
                 async init() {
                     //console.log("starting fetch:", apiURL);
                     let rsp = await fetch(apiURL);
@@ -44,7 +44,7 @@
         }
 
         function fileLink(file) {
-            let baseURL = `/p/${token}/`;
+            let baseURL = `/p/${name}/`;
             let fullURL = baseURL + file.Path;
             let html = `<a href="${fullURL}">${file.Path}</a>`;
             return html;
@@ -52,7 +52,7 @@
 
         function toggleSpaLink() {
             console.log("toggleSpaLink");
-            let uri = `/p/${token}/_spa`;
+            let uri = `/p/${name}/_spa`;
             return `&nbsp;<a href="${uri}">toggle SPA</a>`;
         }
 

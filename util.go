@@ -4,10 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"io/ioutil"
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
@@ -192,4 +194,22 @@ func dumpHeaders(r *http.Request) {
 		}
 		logf(ctx(), "%s: '%#v'\n", key, a)
 	}
+}
+
+// returns -1 if directory doesn't exist
+func getDirectorySize(dir string) int64 {
+	var totalSize int64
+	filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.Type().IsRegular() {
+			i, err := d.Info()
+			if err == nil {
+				totalSize += i.Size()
+			}
+		}
+		return nil
+	})
+	return totalSize
 }

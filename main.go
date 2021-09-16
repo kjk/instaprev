@@ -17,7 +17,6 @@ import (
 )
 
 const (
-	tokenLength  = 6 // like transfer.sh
 	timeTwoHours = time.Hour * 2
 )
 
@@ -30,24 +29,27 @@ type siteFile struct {
 
 // describes a single website
 type Site struct {
-	token string
+	name string // random token or premium site domain name
 	// where files are stored
-	// ${dataDir}/${token} for temporary sites
+	// ${dataDir}/${name} for temporary sites
 	// ${premiumDataDir}/${premiumName} for premium sites
 	dir       string
 	createdOn time.Time
 	totalSize int64
 	files     []*siteFile
 	isSPA     bool
+	isPremium bool
 
 	// premium sites are hosted on their own subdomains
-	// and need a token to upload
-	premiumName    string
+	// and need a password to upload
 	uploadPassword string
 }
 
-func (s *Site) isPremium() bool {
-	return s.premiumName != ""
+func (s *Site) URL() string {
+	if s.isPremium {
+		return fmt.Sprintf("https://%s.instantpreview.dev/", s.name)
+	}
+	return fmt.Sprintf("https://www.instantpreview.dev/p/%s/", s.name)
 }
 
 var (
@@ -60,8 +62,8 @@ var (
 
 // for now we store premium sites in an env variable INSTA_PREV_SITES
 // in the format:
-// site1,token1
-// site2,token2
+// site1,password1
+// site2,password2
 func parsePremiumSites() {
 	logf(ctx(), "parsePremiumsSites:\n")
 	parseSites := func(s string) {
@@ -86,11 +88,16 @@ func parsePremiumSites() {
 			}
 			dir := filepath.Join(getPremiumSitesDir(), name)
 			site := &Site{
-				token:          name,
-				premiumName:    name,
+				name:           name,
 				uploadPassword: pwd,
 				dir:            dir,
-				createdOn:      time.Now(), // TODO: not really
+				createdOn:      time.Now(),
+				isPremium:      true,
+				totalSize:      getDirectorySize(dir),
+			}
+			st, err := os.Lstat(dir)
+			if err != nil {
+				site.createdOn = st.ModTime()
 			}
 			logf(ctx(), "parsePremiumsSites: name: %s, upload password: %s\n", name, pwd)
 			sites = append(sites, site)
@@ -170,24 +177,24 @@ type siteFilesResult struct {
 	IsSPA bool
 }
 
-// GET /api/site-info.json?token=${token}
+// GET /api/site-info.json?name=${name}
 func handleAPISiteFiles(w http.ResponseWriter, r *http.Request) {
 	site, _ := findPremiumSiteFromHost(r.Host)
 	if site == nil {
-		token := r.FormValue("token")
-		logf(r.Context(), "handleAPISiteFiles: '%s', token: '%s'\n", r.URL, token)
-		if token == "" {
-			serveBadRequestError(w, r, "Error: missing 'token' arg")
+		name := r.FormValue("name")
+		logf(r.Context(), "handleAPISiteFiles: '%s', name: '%s'\n", r.URL, name)
+		if name == "" {
+			serveBadRequestError(w, r, "Error: missing 'name' arg")
 			return
 		}
-		site := findSiteByToken(token)
+		site := findSiteByName(name)
 		if site == nil {
-			logf(r.Context(), "handleAPISiteFiles: didn't find site for token '%s'\n", token)
+			logf(r.Context(), "handleAPISiteFiles: didn't find site for name '%s'\n", name)
 			http.NotFound(w, r)
 			return
 		}
 	} else {
-		logf(ctx(), "handleAPISiteFiles: '%s', premium site: %s\n", r.URL.Path, site.premiumName)
+		logf(ctx(), "handleAPISiteFiles: '%s', premium site: %s\n", r.URL.Path, site.name)
 	}
 
 	v := &siteFilesResult{
@@ -223,10 +230,12 @@ func handleAPISummary(w http.ResponseWriter, r *http.Request) {
 }
 
 type siteInfo struct {
-	Token     string
+	Name      string
 	FileCount int
 	TotalSize int64
 	IsSPA     bool
+	IsPremium bool
+	URL       string
 }
 
 // GET /api/sites.json
@@ -238,10 +247,12 @@ func handleAPISites(w http.ResponseWriter, r *http.Request) {
 	muSites.Lock()
 	for _, site := range sites {
 		si := siteInfo{
-			Token:     site.token,
+			Name:      site.name,
 			FileCount: len(site.files),
 			TotalSize: site.totalSize,
 			IsSPA:     site.isSPA,
+			IsPremium: site.isPremium,
+			URL:       site.URL(),
 		}
 		v = append(v, si)
 	}
@@ -256,7 +267,7 @@ func expireSitesLoop() {
 		muSites.Lock()
 		nExpired := 0
 		for _, site := range sites {
-			if site.isPremium() {
+			if site.isPremium {
 				// premium sites do not expire
 				continue
 			}
@@ -265,7 +276,7 @@ func expireSitesLoop() {
 				newSites = append(newSites, site)
 			} else {
 				os.RemoveAll(site.dir)
-				logf(ctx(), "expired site '%s' and deleted directory '%s'\n", site.token, site.dir)
+				logf(ctx(), "expired site '%s' and deleted directory '%s'\n", site.name, site.dir)
 				nExpired++
 			}
 		}
@@ -275,11 +286,11 @@ func expireSitesLoop() {
 	}
 }
 
-func findSiteByToken(token string) *Site {
+func findSiteByName(name string) *Site {
 	muSites.Lock()
 	defer muSites.Unlock()
 	for _, site := range sites {
-		if site.token == token {
+		if site.name == name {
 			return site
 		}
 	}
@@ -288,20 +299,19 @@ func findSiteByToken(token string) *Site {
 }
 func findSiteByPath(path string) *Site {
 	path = strings.TrimPrefix(path, "/p/")
-	// extract token
+	// extract name
 	if len(path) < 6 {
 		return nil
 	}
-	token := path[:6]
-	return findSiteByToken(token)
+	return findSiteByName(path[:6])
 }
 
 func servePathInSite(w http.ResponseWriter, r *http.Request, site *Site, path string) {
 	var realPath string
-	if site.isPremium() {
+	if site.isPremium {
 		realPath = path
 	} else {
-		realPath = path[9:] // strip /p/${token}
+		realPath = path[9:] // strip /p/${name}
 	}
 	if realPath == "" {
 		// TODO: maybe also add query params etc.
@@ -325,8 +335,8 @@ func servePathInSite(w http.ResponseWriter, r *http.Request, site *Site, path st
 		// toggle SPA mode
 		site.isSPA = !site.isSPA
 		redirectURL := "_dir"
-		if !site.isPremium() {
-			redirectURL = fmt.Sprintf("/p/%s/_dir", site.token)
+		if !site.isPremium {
+			redirectURL = fmt.Sprintf("/p/%s/_dir", site.name)
 		}
 		http.Redirect(w, r, redirectURL, http.StatusTemporaryRedirect)
 		return
@@ -343,11 +353,6 @@ func servePathInSite(w http.ResponseWriter, r *http.Request, site *Site, path st
 		if f.Path == "404.html" {
 			file404 = f
 		}
-	}
-
-	if toFind == "" && site.isPremium() && realPath == "/api/site-info.json" {
-		handleAPISiteFiles(w, r)
-		return
 	}
 
 	if toFind == "" {
@@ -393,7 +398,7 @@ func servePathInSite(w http.ResponseWriter, r *http.Request, site *Site, path st
 	http.ServeFile(w, r, path404)
 }
 
-// GET /p/${token}/${path}
+// GET /p/${name}/${path}
 func handlePreview(w http.ResponseWriter, r *http.Request) {
 	logf(r.Context(), "handlePreview: '%s'\n", r.URL)
 	path := r.URL.Path
@@ -518,7 +523,7 @@ func siteMaybeRedirectForPath(r *http.Request) string {
 		return ""
 	}
 	// TODO: add query params and hash
-	newURL := "/p/" + site.token + r.URL.Path
+	newURL := "/p/" + site.name + r.URL.Path
 	logf(r.Context(), "siteRedirectForPath: path: '%s', newURL: '%s', r.URL.RawQuery: '%s'\n", path, newURL, r.URL.RawQuery)
 	return newURL
 }

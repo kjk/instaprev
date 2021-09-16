@@ -6,7 +6,7 @@
     <script src="https://unpkg.com/alpinejs@3.3.3/dist/cdn.min.js" defer></script>
     <script src="https://www.instantpreview.dev/main.js" defer></script>
     <script>
-        let token;
+        let name;
         async function initAlpine() {
             console.log("initAlpine");
             let uri = window.location;
@@ -30,9 +30,7 @@
         }
 
         function siteLink(site) {
-            let fullURL = `/p/${site.Token}/`;
-            let html = `<a href="${fullURL}">${site.Token}</a>`;
-            return html;
+            return `<a href="${site.URL}">${site.Name}</a>`;
         }
 
         function init() {
@@ -57,6 +55,7 @@
                     <th>files</th>
                     <th>total size</th>
                     <th>spa?</th>
+                    <th>premium?</th>
                 </tr>
                 <template x-for="site in $store.data.sites">
                     <tr>
@@ -64,7 +63,8 @@
                         </td>
                         <td x-text="site.FileCount"></td>
                         <td x-text="humanizeSize(site.TotalSize)"></td>
-                        <td x-text="site.IsSPA ? 'yes' : ''"></td>
+                        <td x-text="site.IsSPA ? 'spa' : 'not spa'"></td>
+                        <td x-text="site.IsPremium ? 'premium' : ''"></td>
                     </tr>
                 </template>
             </table>

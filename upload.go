@@ -170,10 +170,10 @@ func isSPA(r *http.Request) bool {
 
 // this is an upload of a raw file. try to auto-detect what it is
 func handleUploadMaybeRaw(w http.ResponseWriter, r *http.Request, site *Site) {
-	token := generateToken(tokenLength)
-	tmpPath := filepath.Join(getDataDir(), token+".dat")
+	name := generateRandomName()
+	tmpPath := filepath.Join(getDataDir(), name+".dat")
 	defer os.Remove(tmpPath)
-	logf(r.Context(), "handleUploadMaybeRaw: '%s', token: '%s', tmpPath: '%s'\n", r.URL, token, tmpPath)
+	logf(r.Context(), "handleUploadMaybeRaw: '%s', name: '%s', tmpPath: '%s'\n", r.URL, name, tmpPath)
 
 	f, err := os.Create(tmpPath)
 	if err != nil {
@@ -207,7 +207,7 @@ func handleUploadMaybeRaw(w http.ResponseWriter, r *http.Request, site *Site) {
 		// otherwise save upload to /foo.txt as foo.txt
 		if !isBlacklistedFileType(path) {
 			path = canonicalPath(path)
-			pathOnDisk := filepath.Join(getDataDir(), token, path)
+			pathOnDisk := filepath.Join(getDataDir(), name, path)
 			err = os.MkdirAll(filepath.Dir(pathOnDisk), 0755)
 			if err != nil {
 				serveInternalError(w, r, "Error: handleUploadMaybeRaw: os.MkdirAll('%s') failed with '%s'", filepath.Dir(pathOnDisk), err)
@@ -241,15 +241,16 @@ func handleUploadMaybeRaw(w http.ResponseWriter, r *http.Request, site *Site) {
 	sites = append(sites, site)
 	muSites.Unlock()
 
+	// TODO: use site.URL ?
 	var uri string
-	if site.isPremium() {
+	if site.isPremium {
 		uri = fmt.Sprintf("https://%s/", r.Host)
 	} else {
 		if len(site.files) > 1 {
-			uri = fmt.Sprintf("https://%s/p/%s/", r.Host, token)
+			uri = fmt.Sprintf("https://%s/p/%s/", r.Host, name)
 		} else {
 			f := site.files[0]
-			uri = fmt.Sprintf("https://%s/p/%s/%s", r.Host, token, f.Path)
+			uri = fmt.Sprintf("https://%s/p/%s/%s", r.Host, name, f.Path)
 		}
 
 	}
@@ -272,8 +273,8 @@ func findPremiumSiteFromHost(host string) (*Site, string) {
 	muSites.Lock()
 	defer muSites.Unlock()
 	for _, site := range sites {
-		if site.premiumName == name {
-			logf(ctx(), "findPremiumSiteFromHost: found site for host '%s', name: '%s'\n", host, site.premiumName)
+		if site.name == name {
+			logf(ctx(), "findPremiumSiteFromHost: found site for host '%s', name: '%s'\n", host, site.name)
 			return site, name
 		}
 	}
@@ -294,10 +295,10 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 				return nil
 			}
 			// generate new, temporary site
-			token := generateToken(tokenLength)
+			name := generateRandomName()
 			site = &Site{
-				token:     token,
-				dir:       filepath.Join(getDataDir(), token),
+				name:      name,
+				dir:       filepath.Join(getDataDir(), name),
 				createdOn: time.Now(),
 				isSPA:     isSPA(r),
 			}
@@ -319,7 +320,7 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 		handleUploadMaybeRaw(w, r, site)
 		return
 	}
-	logf(r.Context(), "handleUpload: '%s', Content-Type: '%s', token: '%s', dir: '%s', premium?: %v\n", r.URL, ct, site.token, site.dir, site.isPremium())
+	logf(r.Context(), "handleUpload: '%s', Content-Type: '%s', name: '%s', dir: '%s', premium?: %v\n", r.URL, ct, site.name, site.dir, site.isPremium)
 	err := r.ParseMultipartForm(maxSize20Mb)
 	if err != nil {
 		serveBadRequestError(w, r, "Error: handleUpload: r.ParseMultipartForm() failed with '%s'\n", err)
@@ -414,14 +415,14 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 	muSites.Unlock()
 
 	var uri string
-	if site.isPremium() {
+	if site.isPremium {
 		uri = fmt.Sprintf("https://%s/", r.Host)
 	} else {
 		if len(site.files) > 1 {
-			uri = fmt.Sprintf("https://%s/p/%s/", r.Host, site.token)
+			uri = fmt.Sprintf("https://%s/p/%s/", r.Host, site.name)
 		} else {
 			f := site.files[0]
-			uri = fmt.Sprintf("https://%s/p/%s/%s", r.Host, site.token, f.Path)
+			uri = fmt.Sprintf("https://%s/p/%s/%s", r.Host, site.name, f.Path)
 		}
 	}
 	rsp := bytes.NewReader([]byte(uri))

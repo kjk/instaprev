@@ -98,7 +98,7 @@ func unpackZipFiles(zipFiles []string, site *Site) error {
 		// now extract using fixed-up file names
 		for i, f := range zr.File {
 			if f.FileInfo().IsDir() {
-				logf(ctx(), "unpackZipFile: skipping directory '%s' in '%s'\n", f.Name, zipFile)
+				//logf(ctx(), "unpackZipFile: skipping directory '%s' in '%s'\n", f.Name, zipFile)
 				continue
 			}
 			if isBlacklistedFileType(f.Name) {

@@ -3,9 +3,7 @@
 
 <head>
     <title>No such premium site</title>
-    <style>
-
-    </style>
+    <link rel="stylesheet" href="https://www.instantpreview.dev/main.css">
 </head>
 
 <body>
@@ -15,62 +13,6 @@
         Learn more about
         <a style="margin-left: 1em;" href="https://blog.kowalczyk.info/article/22c20216c7784342baab69efd38ab5cf/instant-preview-documentation.html" target="_blank">Instant Preview</a>
     </div>
-
-    <div class="welcome">
-        <div class="name">Instant Preview</div>
-        <div>for websites and HTML files</div>
-        <div>made by <a href="https://blog.kowalczyk.info/" target="_blank">kjk</a>
-        </div>
-    </div>
-    <p>
-        Get an instant, temporary preview of html files or websites. Like a temporary Netlify or Vercel.</p>
-    <p>
-        Upload a single .html file, multiple files, a directory or a .zip file with html / css / javascript.
-    </p>
-    <p>
-        The files are private (under random url) and will be deleted after ~2 hrs.
-    </p>
-    <p>Upload from command line using curl:
-        <ul>
-            <li><code>curl -F name-on-server.html=@local-file.html https://www.instantpreview.dev/upload</code></li>
-            <li><code>curl --upload-file local-file.html https://www.instantpreview.dev/name-on-server.html</code> </li>
-            <li>to upload directory:
-                <ul>
-                    <li><code>zip -9 -r website.zip www</code></li>
-                    <li><code>curl --upload-file website.zip https://www.instantpreview.dev/upload</code></li>
-                </ul>
-            </li>
-            <li><a href="https://blog.kowalczyk.info/article/22c20216c7784342baab69efd38ab5cf/instant-preview-documentation.html" target="_blank">learn more</a></li>
-        </ul>
-    </p>
-    <p>Max size of a single file: 5 MB, max size of all files: 10 MB.</p>
-
-    <div x-data id="drop-area">
-        <form class="upload-form" method="post" action="" enctype="miltipart/format-data">
-            <p>To upload for instant preview, drag & drop: a file, multiple files, folder or a ZIP file. Or use button below to select files for upload.
-            </p>
-            <input type="file" id="fileElem" multiple onchange="handleFiles(this.files)">
-            <label class="select-files-button" for="fileElem">Select files for upload</label>
-        </form>
-    </div>
-    <!-- not inside form because drop-area has fixed size and upload-form is sized to 100% of it -->
-    <div x-data>
-        <div x-show="$store.data.statusHTML" x-html="$store.data.statusHTML">
-        </div>
-        <div x-show="$store.data.error" style="color:red">
-        </div>
-    </div>
-    <script>
-        function siteCountStr(n) {
-            return `${n} ${plural(n, "site")}`;
-        }
-    </script>
-    <div id="summary" x-show="data" x-data="{ data: {} }" x-init="data = await loadSummary()">
-        Serving
-        <span x-text="siteCountStr(data.SitesCount)"></span>
-        of total size <span x-text="data.SitesSizeStr"></span>
-    </div>
-
 </body>
 
 </html>

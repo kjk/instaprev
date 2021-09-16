@@ -8,3 +8,5 @@ files or upload them using api.
 It's not a website hosting service. The files will be deleted after ~2 hrs.
 
 It's meant for previewing websites during development.
+
+[Learn more](https://blog.kowalczyk.info/article/22c20216c7784342baab69efd38ab5cf/instant-preview-documentation.html)

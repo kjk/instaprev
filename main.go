@@ -285,19 +285,7 @@ func handleAPISummary(w http.ResponseWriter, r *http.Request) {
 	serveJSON(w, r, summary)
 }
 
-/*
-type siteInfo struct {
-	Name      string
-	FileCount int
-	TotalSize int64
-	IsSPA     bool
-	IsPremium bool
-	URL       string
-}
-*/
-
 // GET /api/sites.json
-// TODO: protect with password
 func handleAPISites(w http.ResponseWriter, r *http.Request) {
 	pwd := r.URL.Query().Get("pwd")
 	logf(r.Context(), "handleAPISites: '%s', pwd: '%s'\n", r.URL, pwd)
@@ -328,6 +316,19 @@ func handleAPISites(w http.ResponseWriter, r *http.Request) {
 	}
 	muSites.Unlock()
 	serveJSON(w, r, v)
+}
+
+// GET /sites
+func handleSites(w http.ResponseWriter, r *http.Request) {
+	pwd := r.URL.Query().Get("pwd")
+	logf(r.Context(), "handleAPISites: '%s', pwd: '%s'\n", r.URL, pwd)
+	if pwd != sitesPassword {
+		logf(r.Context(), "handleAPISites: password in url doesn't match sitesPassword\n")
+		http.NotFound(w, r)
+		return
+	}
+	filePath := filepath.Join("www", "listSites.html")
+	http.ServeFile(w, r, filePath)
 }
 
 func expireSitesLoop() {
@@ -542,8 +543,7 @@ func handleIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if path == "/sites" {
-		filePath := filepath.Join("www", "listSites.html")
-		http.ServeFile(w, r, filePath)
+		handleSites(w, r)
 		return
 	}
 

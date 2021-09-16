@@ -269,11 +269,11 @@ func findPremiumSiteFromHost(host string) (*Site, string) {
 	defer muSites.Unlock()
 	for _, site := range sites {
 		if site.premiumName == name {
-			logf(ctx(), "findPremiumSiteFromHost: found site '%s'\n", site.premiumName)
+			logf(ctx(), "findPremiumSiteFromHost: found site for host '%s', name: '%s'\n", host, site.premiumName)
 			return site, name
 		}
 	}
-	logf(ctx(), "findPremiumSiteFromHost: no site for host '%s'\n", host)
+	logf(ctx(), "findPremiumSiteFromHost: no site for host '%s', name: '%s'\n", host, name)
 	return nil, name
 }
 

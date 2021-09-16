@@ -261,6 +261,12 @@ func handleUploadMaybeRaw(w http.ResponseWriter, r *http.Request, site *Site) {
 // returns "" if not a premium name or no premium site with that name
 // and the name "suma.instantpreview.dev" => "suma"
 func findPremiumSiteFromHost(host string) (*Site, string) {
+	if strings.HasSuffix(host, "gitpod.io") {
+		// when testing on .gitpod.io, pretend it's resolving to
+		// www.instantpreview.dev
+		logf(ctx(), "findPremiumSiteFromHost: on gitpod.io so assuming base\n")
+		return nil, ""
+	}
 	parts := strings.Split(host, ".")
 	if len(parts) != 3 {
 		logf(ctx(), "findPremiumSiteFromHost: invalid host '%s'\n", host)
@@ -290,7 +296,7 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 	findPremimOrCreateNonPremium := func() *Site {
 		site, domainName := findPremiumSiteFromHost(r.Host)
 		if site == nil {
-			if domainName != "www" {
+			if domainName != "" {
 				serveErrorStatus(w, r, http.StatusBadRequest, "Error: can't upload to '%s'. Use https://www.instantpreview.dev or double-check name of premium site\n", r.Host)
 				return nil
 			}

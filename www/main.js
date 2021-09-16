@@ -133,7 +133,7 @@ function preventDefaultsOnElement(el) {
 }
 
 async function loadSummary() {
-    let rsp = await fetch("/api/summary.json");
+    let rsp = await fetch("/__instantpreviewinternal/api/summary.json");
     let js = await rsp.json();
     //console.log("loadSummary:", js);
     return js;

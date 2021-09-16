@@ -47,11 +47,28 @@ type Site struct {
 	uploadPassword string
 }
 
-func (s *Site) URL() string {
-	if s.isPremium {
-		return fmt.Sprintf("https://%s.instantpreview.dev/", s.name)
+func siteURL(r *http.Request, s *Site) string {
+	host := r.Host
+	if strings.HasSuffix(host, "gitpod.io") {
+		// special case when testing on gitpod.io
+		// no premium sites
+		return fmt.Sprintf("https://%s/p/%s/", host, s.name)
 	}
-	return fmt.Sprintf("https://www.instantpreview.dev/p/%s/", s.name)
+	// assume hosting where main site is under www.${hostBase}
+	// and premium sites are at ${site}.${hostBase}
+	parts := strings.Split(host, ".")
+	hostBase := host
+	n := len(parts)
+	if n >= 2 {
+		hostBase = parts[n-2] + "." + parts[n-1]
+	}
+	if s.isPremium {
+		return fmt.Sprintf("https://%s.%s/", hostBase, s.name)
+	}
+	if n == 2 {
+		return fmt.Sprintf("https://%s/p/%s/", hostBase, s.name)
+	}
+	return fmt.Sprintf("https://www.%s/p/%s/", hostBase, s.name)
 }
 
 var (
@@ -138,7 +155,7 @@ func parsePremiumSites() {
 		logf(ctx(), "parsePremiumSites: parsing from /etc/secrets/premium_sites.txt\n")
 		parseSites(string(d))
 	}
-	logf(ctx(), "parsePremiumSitesFromEnv: loaded %d sites\n", len(sites))
+	logf(ctx(), "parsePremiumSites: loaded %d sites\n", len(sites))
 }
 
 func getPremiumSitesDir() string {
@@ -208,30 +225,35 @@ type siteFilesResult struct {
 	IsSPA bool
 }
 
-// GET /api/toggle-spa?name=${name}
+// toggle SPA mode
+// GET /__instantpreviewinternal/api/toggle-spa?name=${name}
 func handleAPIToggleSpa(w http.ResponseWriter, r *http.Request) {
-	// toggle SPA mode
 	name := r.FormValue("name")
-	logf(r.Context(), "handleAPISiteFiles: '%s', name: '%s'\n", r.URL, name)
+	logf(r.Context(), "handleAPIToggleSpa: '%s', name: '%s'\n", r.URL, name)
 	if name == "" {
-		serveBadRequestError(w, r, "Error: missing 'name' argument to /api/site-info.json")
+		serveBadRequestError(w, r, "Error: missing 'name' argument to /__instantpreviewinternal/api/site-info.json")
 		return
 	}
 	site := findSiteByName(name)
 	if site == nil {
-		logf(r.Context(), "handleAPISiteFiles: didn't find site for name '%s'\n", name)
+		logf(r.Context(), "handleAPIToggleSpa: didn't find site for name '%s'\n", name)
 		http.NotFound(w, r)
 		return
 	}
 	site.isSPA = !site.isSPA
-	redirectURL := "_dir"
-	if !site.isPremium {
-		redirectURL = fmt.Sprintf("/p/%s/_dir", site.name)
+
+	redirectURL := r.Header.Get("referer")
+	if redirectURL == "" {
+		if site.isPremium {
+			redirectURL = "_dir"
+		} else {
+			redirectURL = fmt.Sprintf("/p/%s/_dir", site.name)
+		}
 	}
 	http.Redirect(w, r, redirectURL, http.StatusTemporaryRedirect)
 }
 
-// GET /api/site-info.json?name=${name}
+// GET /__instantpreviewinternal/api/site-info.json?name=${name}
 func handleAPISiteFiles(w http.ResponseWriter, r *http.Request) {
 	//site, _ := findPremiumSiteFromHost(r.Host)
 	var site *Site
@@ -239,7 +261,7 @@ func handleAPISiteFiles(w http.ResponseWriter, r *http.Request) {
 		name := r.FormValue("name")
 		logf(r.Context(), "handleAPISiteFiles: '%s', name: '%s'\n", r.URL, name)
 		if name == "" {
-			serveBadRequestError(w, r, "Error: missing 'name' argument to /api/site-info.json")
+			serveBadRequestError(w, r, "Error: missing 'name' argument to /__instantpreviewinternal/api/site-info.json")
 			return
 		}
 		site = findSiteByName(name)
@@ -260,7 +282,7 @@ func handleAPISiteFiles(w http.ResponseWriter, r *http.Request) {
 	serveJSON(w, r, v)
 }
 
-// GET /api/summary.json
+// GET /__instantpreviewinternal/api/summary.json
 func handleAPISummary(w http.ResponseWriter, r *http.Request) {
 	logf(r.Context(), "handleAPISummary: '%s'\n", r.URL)
 	sitesCount := 0
@@ -285,7 +307,7 @@ func handleAPISummary(w http.ResponseWriter, r *http.Request) {
 	serveJSON(w, r, summary)
 }
 
-// GET /api/sites.json
+// GET /__instantpreviewinternal/api/sites.json
 func handleAPISites(w http.ResponseWriter, r *http.Request) {
 	pwd := r.URL.Query().Get("pwd")
 	logf(r.Context(), "handleAPISites: '%s', pwd: '%s'\n", r.URL, pwd)
@@ -310,7 +332,7 @@ func handleAPISites(w http.ResponseWriter, r *http.Request) {
 			TotalSize: site.totalSize,
 			IsSPA:     site.isSPA,
 			IsPremium: site.isPremium,
-			URL:       site.URL(),
+			URL:       siteURL(r, site),
 		}
 		v = append(v, si)
 	}
@@ -489,16 +511,31 @@ func handleIndex(w http.ResponseWriter, r *http.Request) {
 	path := r.URL.Path
 
 	// this happens before resolving premium site info
-	// TODO: maybe make them more unique like
-	// /__insprevinternal/api/
 	// to minimize possibility of conflict with the site
-	if path == "/api/site-info.json" {
+	if path == "/__instantpreviewinternal/api/site-info.json" {
 		handleAPISiteFiles(w, r)
 		return
 	}
-
-	if path == "/api/toggle-spa" {
+	if path == "/__instantpreviewinternal/api/summary.json" {
+		handleAPISummary(w, r)
+		return
+	}
+	if path == "/__instantpreviewinternal/api/sites.json" {
+		handleAPISites(w, r)
+		return
+	}
+	if path == "/__instantpreviewinternal/api/toggle-spa" {
 		handleAPIToggleSpa(w, r)
+		return
+	}
+	if path == "/__instantpreviewinternal/main.js" {
+		filePath := filepath.Join("www", "main.js")
+		http.ServeFile(w, r, filePath)
+		return
+	}
+	if path == "/__instantpreviewinternal/main.css" {
+		filePath := filepath.Join("www", "main.css")
+		http.ServeFile(w, r, filePath)
 		return
 	}
 
@@ -530,14 +567,7 @@ func handleIndex(w http.ResponseWriter, r *http.Request) {
 		handleUpload(w, r)
 		return
 	}
-	if path == "/api/summary.json" {
-		handleAPISummary(w, r)
-		return
-	}
-	if path == "/api/sites.json" {
-		handleAPISites(w, r)
-		return
-	}
+
 	if path == "/ping" {
 		servePlainText(w, r, "pong")
 		return

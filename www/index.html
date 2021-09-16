@@ -2,11 +2,14 @@
 <html>
 
 <head>
-    <link rel="stylesheet" href="https://www.instantpreview.dev/main.css">
-    <script src="/main.js" defer></script>
+    <link rel="stylesheet" href="/__instantpreviewinternal/main.css">
+    <script src="/__instantpreviewinternal/main.js" defer></script>
     <script src="https://unpkg.com/alpinejs@3.3.3/dist/cdn.min.js" defer></script>
     <script>
         let dropArea;
+
+        const maxFileSize = 1024 * 1024 * 5; // 5 MB
+        const maxUploadSize = 1024 * 1024 * 10; // 10 MB
 
         const blaclistedExt = ["exe", "mp4", "avi", "flv", "mpg", "mpeg", "mov", "mkv", "wmv", "dll", "so"];
 
@@ -25,9 +28,6 @@
         function isZipFile(name) {
             return name.toLowerCase().endsWith(".zip");
         }
-
-        const maxFileSize = 1024 * 1024 * 5; // 5 MB
-        const maxUploadSize = 1024 * 1024 * 10; // 10 MB
 
         // filesWIthPath is []{ file, path }
         async function uploadFiles(filesWithPath) {
@@ -60,7 +60,7 @@
                 }
                 if (totalSize + file.size > maxUploadSize) {
                     nSkipping++;
-                    console.log(`Skipping upload of '${name}' ${humanizeSize(file.size)} because total size would exceed max total size of ${humanizeSize(maxTotalSize)}`);
+                    console.log(`Skipping upload of '${name}' ${humanizeSize(file.size)} because total size would exceed max total size of ${humanizeSize(maxUploadSize)}`);
                     continue;
                 }
                 // console.log(`Uploading '${name}' ('${file.name}') ${humanizeSize(file.size)}`);

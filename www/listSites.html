@@ -2,15 +2,15 @@
 <html>
 
 <head>
-    <link rel="stylesheet" href="https://www.instantpreview.dev/main.css">
+    <link rel="stylesheet" href="/__instantpreviewinternal/main.css">
     <script src="https://unpkg.com/alpinejs@3.3.3/dist/cdn.min.js" defer></script>
-    <script src="/main.js" defer></script>
+    <script src="/__instantpreviewinternal/main.js" defer></script>
     <script>
         let name;
         async function initAlpine() {
             console.log("initAlpine");
             let uri = window.location;
-            let apiURL = `/api/sites.json` + window.location.search;
+            let apiURL = `/__instantpreviewinternal/api/sites.json` + window.location.search;
             Alpine.store('data', {
                 "sites": [],
                 async init() {

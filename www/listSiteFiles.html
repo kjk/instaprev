@@ -2,7 +2,7 @@
 <html>
 
 <head>
-    <link rel="stylesheet" href="https://www.instantpreview.dev/main.css">
+    <link rel="stylesheet" href="/__instantpreviewinternal/main.css">
     <script src="https://unpkg.com/alpinejs@3.3.3/dist/cdn.min.js" defer></script>
     <script>
         //console.log("listSiteFiles.html, window.location:", window.location);
@@ -21,7 +21,7 @@
             }
             console.log("site name:", name);
 
-            let apiURL = `/api/site-info.json?name=${name}`;
+            let apiURL = `/__instantpreviewinternal/api/site-info.json?name=${name}`;
             Alpine.store('site', {
                 files: [],
                 isSPA: false,
@@ -88,7 +88,7 @@
         }
 
         function toggleSpaLink() {
-            let uri = `/api/toggle-spa?name=${name}`;
+            let uri = `/__instantpreviewinternal/api/toggle-spa?name=${name}`;
             return `&nbsp;<a href="${uri}">toggle SPA</a>`;
         }
 

@@ -234,7 +234,6 @@ func handleAPIToggleSpa(w http.ResponseWriter, r *http.Request) {
 func handleAPISiteFiles(w http.ResponseWriter, r *http.Request) {
 	//site, _ := findPremiumSiteFromHost(r.Host)
 	var site *Site
-	siteInfo
 	if site == nil {
 		name := r.FormValue("name")
 		logf(r.Context(), "handleAPISiteFiles: '%s', name: '%s'\n", r.URL, name)

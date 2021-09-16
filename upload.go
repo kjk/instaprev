@@ -238,11 +238,16 @@ func handleUploadMaybeRaw(w http.ResponseWriter, r *http.Request, site *Site) {
 	muSites.Unlock()
 
 	var uri string
-	if len(site.files) > 1 {
-		uri = fmt.Sprintf("https://%s/p/%s/", r.Host, token)
+	if site.isPremium() {
+		uri = fmt.Sprintf("https://%s/", r.Host)
 	} else {
-		f := site.files[0]
-		uri = fmt.Sprintf("https://%s/p/%s/%s", r.Host, token, f.Path)
+		if len(site.files) > 1 {
+			uri = fmt.Sprintf("https://%s/p/%s/", r.Host, token)
+		} else {
+			f := site.files[0]
+			uri = fmt.Sprintf("https://%s/p/%s/%s", r.Host, token, f.Path)
+		}
+
 	}
 	rsp := bytes.NewReader([]byte(uri))
 	http.ServeContent(w, r, "result.txt", time.Now(), rsp)

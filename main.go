@@ -223,10 +223,9 @@ func handleAPISiteFiles(w http.ResponseWriter, r *http.Request) {
 			http.NotFound(w, r)
 			return
 		}
-	} else {
-		logf(ctx(), "handleAPISiteFiles: '%s', premium site: %s\n", r.URL.Path, site.name)
 	}
 
+	logf(ctx(), "handleAPISiteFiles: '%s', site: %s, premium?: %v\n", r.URL.Path, site.name, site.isPremium)
 	v := &siteFilesResult{
 		Files: site.files,
 		IsSPA: site.isSPA,

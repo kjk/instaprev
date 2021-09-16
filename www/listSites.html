@@ -10,7 +10,7 @@
         async function initAlpine() {
             console.log("initAlpine");
             let uri = window.location;
-            let apiURL = `/api/sites.json`;
+            let apiURL = `/api/sites.json` + window.location.search;
             Alpine.store('data', {
                 "sites": [],
                 async init() {

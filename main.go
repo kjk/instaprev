@@ -60,6 +60,7 @@ var (
 	muSites               sync.Mutex
 	dataDirCached         string
 	premiumSitesDirCached string
+	sitesPassword         string // preotects /sites url
 )
 
 func getSiteFilesFromDir(dir string) ([]*siteFile, int64) {
@@ -298,8 +299,13 @@ type siteInfo struct {
 // GET /api/sites.json
 // TODO: protect with password
 func handleAPISites(w http.ResponseWriter, r *http.Request) {
-	logf(r.Context(), "handleAPISites: '%s'\n", r.URL)
-
+	pwd := r.URL.Query().Get("pwd")
+	logf(r.Context(), "handleAPISites: '%s', pwd: '%s'\n", r.URL, pwd)
+	if pwd != sitesPassword {
+		logf(r.Context(), "handleAPISites: password in url doesn't match sitesPassword\n")
+		http.NotFound(w, r)
+		return
+	}
 	var v []interface{}
 	muSites.Lock()
 	for _, site := range sites {
@@ -615,7 +621,9 @@ func doRunServer() {
 	}
 	httpSrv.Addr = httpAddr
 	ctx := ctx()
-	logf(ctx, "Starting server on http://%s, data dir: '%s', premium data dir: '%s'\n", httpAddr, getDataDir(), getPremiumSitesDir())
+
+	sitesPassword = os.Getenv("SITES_PASSWORD")
+	logf(ctx, "Starting server on http://%s, data dir: '%s', premium data dir: '%s', /sites password: '%s'\n", httpAddr, getDataDir(), getPremiumSitesDir(), sitesPassword)
 	parsePremiumSites()
 
 	chServerClosed := make(chan bool, 1)

@@ -172,18 +172,23 @@ type siteFilesResult struct {
 
 // GET /api/site-info.json?token=${token}
 func handleAPISiteFiles(w http.ResponseWriter, r *http.Request) {
-	token := r.FormValue("token")
-	logf(r.Context(), "handleAPISiteFiles: '%s', token: '%s'\n", r.URL, token)
-	if token == "" {
-		serveBadRequestError(w, r, "Error: missing 'token' arg")
-		return
-	}
-	site := findSiteByToken(token)
+	site, _ := findPremiumSiteFromHost(r.Host)
 	if site == nil {
-		logf(r.Context(), "handleAPISiteFiles: didn't find site for token '%s'\n", token)
-		http.NotFound(w, r)
-		return
+		token := r.FormValue("token")
+		logf(r.Context(), "handleAPISiteFiles: '%s', token: '%s'\n", r.URL, token)
+		if token == "" {
+			serveBadRequestError(w, r, "Error: missing 'token' arg")
+			return
+		}
+		site := findSiteByToken(token)
+		if site == nil {
+			logf(r.Context(), "handleAPISiteFiles: didn't find site for token '%s'\n", token)
+			http.NotFound(w, r)
+			return
+		}
+
 	}
+
 	v := &siteFilesResult{
 		Files: site.files,
 		IsSPA: site.isSPA,
@@ -329,7 +334,6 @@ func servePathInSite(w http.ResponseWriter, r *http.Request, site *Site, path st
 	var fileIndex *siteFile
 	var file404 *siteFile
 
-	// TODO: could cache it
 	for _, f := range site.files {
 		if f.Path == "index.html" {
 			fileIndex = f
@@ -338,6 +342,11 @@ func servePathInSite(w http.ResponseWriter, r *http.Request, site *Site, path st
 		if f.Path == "404.html" {
 			file404 = f
 		}
+	}
+
+	if toFind == "" && site.isPremium() && realPath == "/api/site-info.json" {
+		handleAPISiteFiles(w, r)
+		return
 	}
 
 	if toFind == "" {
@@ -420,6 +429,8 @@ func handleIndex(w http.ResponseWriter, r *http.Request) {
 
 	if name != "" {
 		// request for premium site but no such site available
+		filePath := filepath.Join("www", "noPremiumSite.html")
+		http.ServeFile(w, r, filePath)
 		return
 	}
 
@@ -427,16 +438,17 @@ func handleIndex(w http.ResponseWriter, r *http.Request) {
 		handlePreview(w, r)
 		return
 	}
+
 	if strings.HasPrefix(path, "/api/upload") || strings.HasPrefix(path, "/upload") {
 		handleUpload(w, r)
 		return
 	}
-	if path == "/api/summary.json" {
-		handleAPISummary(w, r)
-		return
-	}
 	if path == "/api/site-info.json" {
 		handleAPISiteFiles(w, r)
+		return
+	}
+	if path == "/api/summary.json" {
+		handleAPISummary(w, r)
 		return
 	}
 	if path == "/api/sites.json" {

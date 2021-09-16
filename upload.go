@@ -60,6 +60,7 @@ func canonicalPath(path string) string {
 func unpackZipFiles(zipFiles []string, site *Site) error {
 	var lastErr error
 	dir := site.dir
+	nUnpacked := 0
 	for _, zipFile := range zipFiles {
 		logf(ctx(), "unpackZipFiles: unpacking '%s'\n", zipFile)
 		st, err := os.Lstat(zipFile)
@@ -112,7 +113,8 @@ func unpackZipFiles(zipFiles []string, site *Site) error {
 				continue
 			}
 			path := filepath.Join(dir, fileNames[i])
-			logf(ctx(), "  unpacking '%s' => '%s'\n", f.Name, path)
+			//logf(ctx(), "  unpacking '%s' => '%s'\n", f.Name, path)
+			nUnpacked++
 
 			err = os.MkdirAll(filepath.Dir(path), 755)
 			if err != nil {
@@ -150,7 +152,9 @@ func unpackZipFiles(zipFiles []string, site *Site) error {
 			site.totalSize += int64(f.UncompressedSize64)
 		}
 		f.Close()
+		logf(ctx(), "unpackZipFiles: unpacked %d files\n", len(fileNames))
 	}
+
 	return lastErr
 }
 

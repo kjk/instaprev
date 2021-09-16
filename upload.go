@@ -59,7 +59,38 @@ func canonicalPath(path string) string {
 // updates info in site
 func unpackZipFiles(zipFiles []string, site *Site) error {
 	var lastErr error
+	var files []*siteFile
+	var totalSize int64
+
 	dir := site.dir
+	if site.isPremium {
+		dir = dir + "-tmp"
+		defer func() {
+			dontUseNewFiles := lastErr != nil
+			if len(site.files) == 0 && len(files) > 0 {
+				// if there was no premium file then use partially unpacked new site
+				dontUseNewFiles = false
+			}
+			if dontUseNewFiles {
+				os.RemoveAll(dir)
+				return
+			}
+			// remove the old dir and use the -tmp as new
+			if err := os.RemoveAll(site.dir); err != nil {
+				logf(ctx(), "unpackZipFiles: site: '%s', os.RemoveAll('%s') failed with '%s'\n", site.name, site.dir, err)
+			} else {
+				logf(ctx(), "unpackZipFiles: site: '%s', os.RemoveAll('%s')\n", site.name, site.dir)
+			}
+			if err := os.Rename(dir, site.dir); err != nil {
+				logf(ctx(), "unpackZipFiles: site: '%s', os.Rename('%s', '%s') failed with '%s'\n", site.name, dir, site.dir, err)
+			} else {
+				logf(ctx(), "unpackZipFiles: site: '%s', os.Rename('%s', '%s')\n", site.name, dir, site.dir)
+			}
+			site.files = files
+			site.totalSize = totalSize
+		}()
+	}
+
 	nUnpacked := 0
 	for _, zipFile := range zipFiles {
 		logf(ctx(), "unpackZipFiles: unpacking '%s'\n", zipFile)
@@ -148,8 +179,8 @@ func unpackZipFiles(zipFiles []string, site *Site) error {
 				pathOnDisk: path,
 				pathInForm: fileNames[i],
 			}
-			site.files = append(site.files, sf)
-			site.totalSize += int64(f.UncompressedSize64)
+			files = append(files, sf)
+			totalSize += int64(f.UncompressedSize64)
 		}
 		f.Close()
 		logf(ctx(), "unpackZipFiles: unpacked %d files\n", len(fileNames))

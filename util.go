@@ -82,7 +82,7 @@ func trimCommonDirPrefix(a []string) {
 	if len(a) < 2 {
 		return
 	}
-	if true {
+	if false {
 		logf(ctx(), "trimCommonDirPrefix:\n")
 		for _, s := range a {
 			logf(ctx(), "%s\n", s)

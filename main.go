@@ -63,7 +63,7 @@ func siteURL(r *http.Request, s *Site) string {
 		hostBase = parts[n-2] + "." + parts[n-1]
 	}
 	if s.isPremium {
-		return fmt.Sprintf("https://%s.%s/", hostBase, s.name)
+		return fmt.Sprintf("https://%s.%s/", s.name, hostBase)
 	}
 	if n == 2 {
 		return fmt.Sprintf("https://%s/p/%s/", hostBase, s.name)

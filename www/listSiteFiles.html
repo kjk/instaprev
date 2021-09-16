@@ -52,6 +52,32 @@
             });
         }
 
+        function humanizeSize(i) {
+            const kb = 1024;
+            const mb = kb * 1024;
+            const gb = mb * 1024;
+            const tb = gb * 1024;
+
+            function fs(n, d, size) {
+                let s = (n / d).toFixed(2);
+                s = s.replace(".00", "") + " " + size;
+                return s;
+            }
+            if (i > tb) {
+                return fs(i, tb, "TB");
+            }
+            if (i > gb) {
+                return fs(i, gb, "GB")
+            }
+            if (i > mb) {
+                return fs(i, mb, "MB")
+            }
+            if (i > kb) {
+                return fs(i, kb, "kB")
+            }
+            return `${i} B`;
+        }
+
         function fileLink(file) {
             if (isPremium) {
                 return `<a href="${file.Path}">${file.Path}</a>`;

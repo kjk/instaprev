@@ -207,9 +207,34 @@ type siteFilesResult struct {
 	IsSPA bool
 }
 
+// GET /api/toggle-spa?name=${name}
+func handleAPIToggleSpa(w http.ResponseWriter, r *http.Request) {
+	// toggle SPA mode
+	name := r.FormValue("name")
+	logf(r.Context(), "handleAPISiteFiles: '%s', name: '%s'\n", r.URL, name)
+	if name == "" {
+		serveBadRequestError(w, r, "Error: missing 'name' argument to /api/site-info.json")
+		return
+	}
+	site := findSiteByName(name)
+	if site == nil {
+		logf(r.Context(), "handleAPISiteFiles: didn't find site for name '%s'\n", name)
+		http.NotFound(w, r)
+		return
+	}
+	site.isSPA = !site.isSPA
+	redirectURL := "_dir"
+	if !site.isPremium {
+		redirectURL = fmt.Sprintf("/p/%s/_dir", site.name)
+	}
+	http.Redirect(w, r, redirectURL, http.StatusTemporaryRedirect)
+}
+
 // GET /api/site-info.json?name=${name}
 func handleAPISiteFiles(w http.ResponseWriter, r *http.Request) {
-	site, _ := findPremiumSiteFromHost(r.Host)
+	//site, _ := findPremiumSiteFromHost(r.Host)
+	var site *Site
+	siteInfo
 	if site == nil {
 		name := r.FormValue("name")
 		logf(r.Context(), "handleAPISiteFiles: '%s', name: '%s'\n", r.URL, name)
@@ -260,6 +285,7 @@ func handleAPISummary(w http.ResponseWriter, r *http.Request) {
 	serveJSON(w, r, summary)
 }
 
+/*
 type siteInfo struct {
 	Name      string
 	FileCount int
@@ -268,16 +294,24 @@ type siteInfo struct {
 	IsPremium bool
 	URL       string
 }
+*/
 
 // GET /api/sites.json
 // TODO: protect with password
 func handleAPISites(w http.ResponseWriter, r *http.Request) {
 	logf(r.Context(), "handleAPISites: '%s'\n", r.URL)
-	v := []siteInfo{}
 
+	var v []interface{}
 	muSites.Lock()
 	for _, site := range sites {
-		si := siteInfo{
+		si := struct {
+			Name      string
+			FileCount int
+			TotalSize int64
+			IsSPA     bool
+			IsPremium bool
+			URL       string
+		}{
 			Name:      site.name,
 			FileCount: len(site.files),
 			TotalSize: site.totalSize,
@@ -359,17 +393,6 @@ func servePathInSite(w http.ResponseWriter, r *http.Request, site *Site, path st
 		path := filepath.Join("www", "listSiteFiles.html")
 		logf(r.Context(), "servePathInSite: serving '%s'\n", path)
 		http.ServeFile(w, r, path)
-		return
-	}
-
-	if toFind == "_spa" {
-		// toggle SPA mode
-		site.isSPA = !site.isSPA
-		redirectURL := "_dir"
-		if !site.isPremium {
-			redirectURL = fmt.Sprintf("/p/%s/_dir", site.name)
-		}
-		http.Redirect(w, r, redirectURL, http.StatusTemporaryRedirect)
 		return
 	}
 
@@ -465,6 +488,11 @@ func handleIndex(w http.ResponseWriter, r *http.Request) {
 	// to minimize possibility of conflict with the site
 	if path == "/api/site-info.json" {
 		handleAPISiteFiles(w, r)
+		return
+	}
+
+	if path == "/api/toggle-spa" {
+		handleAPIToggleSpa(w, r)
 		return
 	}
 

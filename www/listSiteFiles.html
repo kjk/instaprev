@@ -88,9 +88,7 @@
         }
 
         function toggleSpaLink() {
-            // TODO: what to do for premium?
-            console.log("toggleSpaLink");
-            let uri = `/p/${name}/_spa`;
+            let uri = `/api/toggle-spa?name=${name}`;
             return `&nbsp;<a href="${uri}">toggle SPA</a>`;
         }
 

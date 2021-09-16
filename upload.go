@@ -59,38 +59,8 @@ func canonicalPath(path string) string {
 // updates info in site
 func unpackZipFiles(zipFiles []string, site *Site) error {
 	var lastErr error
-	var files []*siteFile
-	var totalSize int64
 
 	dir := site.dir
-	if site.isPremium {
-		dir = dir + "-tmp"
-		defer func() {
-			dontUseNewFiles := lastErr != nil
-			if len(site.files) == 0 && len(files) > 0 {
-				// if there was no premium file then use partially unpacked new site
-				dontUseNewFiles = false
-			}
-			if dontUseNewFiles {
-				os.RemoveAll(dir)
-				return
-			}
-			// remove the old dir and use the -tmp as new
-			if err := os.RemoveAll(site.dir); err != nil {
-				logf(ctx(), "unpackZipFiles: site: '%s', os.RemoveAll('%s') failed with '%s'\n", site.name, site.dir, err)
-			} else {
-				logf(ctx(), "unpackZipFiles: site: '%s', os.RemoveAll('%s')\n", site.name, site.dir)
-			}
-			if err := os.Rename(dir, site.dir); err != nil {
-				logf(ctx(), "unpackZipFiles: site: '%s', os.Rename('%s', '%s') failed with '%s'\n", site.name, dir, site.dir, err)
-			} else {
-				logf(ctx(), "unpackZipFiles: site: '%s', os.Rename('%s', '%s')\n", site.name, dir, site.dir)
-			}
-			site.files = files
-			site.totalSize = totalSize
-		}()
-	}
-
 	nUnpacked := 0
 	for _, zipFile := range zipFiles {
 		logf(ctx(), "unpackZipFiles: unpacking '%s'\n", zipFile)
@@ -176,11 +146,11 @@ func unpackZipFiles(zipFiles []string, site *Site) error {
 			sf := &siteFile{
 				Path:       fileNames[i],
 				Size:       int64(f.UncompressedSize64),
-				pathOnDisk: path,
+				pathOnDisk: filepath.Join(dir, fileNames[i]),
 				pathInForm: fileNames[i],
 			}
-			files = append(files, sf)
-			totalSize += int64(f.UncompressedSize64)
+			site.files = append(site.files, sf)
+			site.totalSize += int64(f.UncompressedSize64)
 		}
 		f.Close()
 		logf(ctx(), "unpackZipFiles: unpacked %d files\n", len(fileNames))
@@ -236,6 +206,7 @@ func handleUploadMaybeRaw(w http.ResponseWriter, r *http.Request, site *Site) {
 		_ = unpackZipFiles(zipFiles, site)
 	} else {
 		// otherwise save upload to /foo.txt as foo.txt
+
 		if !isBlacklistedFileType(path) {
 			path = canonicalPath(path)
 			pathOnDisk := filepath.Join(getDataDir(), name, path)
@@ -249,10 +220,9 @@ func handleUploadMaybeRaw(w http.ResponseWriter, r *http.Request, site *Site) {
 				serveInternalError(w, r, "Error: handleUploadMaybeRaw: os.Rename('%s', '%s') failed with '%s'", tmpPath, pathOnDisk, err)
 				return
 			}
-			size := int64(0)
 			st, err := os.Lstat(pathOnDisk)
 			must(err)
-			size = st.Size()
+			size := st.Size()
 			sf := &siteFile{
 				Path:       path,
 				Size:       size,
@@ -260,6 +230,7 @@ func handleUploadMaybeRaw(w http.ResponseWriter, r *http.Request, site *Site) {
 				pathInForm: path,
 			}
 			site.files = append(site.files, sf)
+			site.totalSize += size
 		}
 	}
 
@@ -269,10 +240,13 @@ func handleUploadMaybeRaw(w http.ResponseWriter, r *http.Request, site *Site) {
 	}
 
 	muSites.Lock()
-	sites = append(sites, site)
+	// premium sites are created at startup
+	if !site.isPremium {
+		sites = append(sites, site)
+	}
 	muSites.Unlock()
 
-	// TODO: use site.URL ?
+	// TODO: use siteURL() ?
 	var uri string
 	if site.isPremium {
 		uri = fmt.Sprintf("https://%s/", r.Host)
@@ -351,6 +325,17 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 	site := findPremimOrCreateNonPremium()
 	if site == nil {
 		return
+	}
+
+	if site.isPremium {
+		// remove existing files for premium site
+		if err := os.RemoveAll(site.dir); err != nil {
+			logf(ctx(), "unpackZipFiles: site: '%s', os.RemoveAll('%s') failed with '%s'\n", site.name, site.dir, err)
+		} else {
+			logf(ctx(), "unpackZipFiles: site: '%s', os.RemoveAll('%s')\n", site.name, site.dir)
+		}
+		site.files = nil
+		site.totalSize = 0
 	}
 
 	if ct == "" {
@@ -448,7 +433,10 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 	_ = unpackZipFiles(zipFiles, site)
 
 	muSites.Lock()
-	sites = append(sites, site)
+	// premium sites are created at startup
+	if !site.isPremium {
+		sites = append(sites, site)
+	}
 	muSites.Unlock()
 
 	var uri string

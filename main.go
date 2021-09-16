@@ -412,9 +412,14 @@ func handleIndex(w http.ResponseWriter, r *http.Request) {
 	}
 
 	path := r.URL.Path
-	site, _ := findPremiumSiteFromHost(r.Host)
+	site, name := findPremiumSiteFromHost(r.Host)
 	if site != nil {
 		servePathInSite(w, r, site, path)
+		return
+	}
+
+	if name != "" {
+		// request for premium site but no such site available
 		return
 	}
 

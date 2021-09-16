@@ -262,6 +262,9 @@ func findPremiumSiteFromHost(host string) (*Site, string) {
 		return nil, ""
 	}
 	name := strings.ToLower(parts[0])
+	if name == "www" {
+		return nil, ""
+	}
 	muSites.Lock()
 	defer muSites.Unlock()
 	for _, site := range sites {

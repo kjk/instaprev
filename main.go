@@ -217,7 +217,7 @@ func handleAPISiteFiles(w http.ResponseWriter, r *http.Request) {
 			serveBadRequestError(w, r, "Error: missing 'name' argument to /api/site-info.json")
 			return
 		}
-		site := findSiteByName(name)
+		site = findSiteByName(name)
 		if site == nil {
 			logf(r.Context(), "handleAPISiteFiles: didn't find site for name '%s'\n", name)
 			http.NotFound(w, r)

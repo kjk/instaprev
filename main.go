@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"io/fs"
 	"net/http"
 	"os"
 	"os/signal"
@@ -61,6 +62,28 @@ var (
 	premiumSitesDirCached string
 )
 
+func getSiteFilesFromDir(dir string) ([]*siteFile, int64) {
+	var totalSize int64
+	var res []*siteFile
+	filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil || !d.Type().IsRegular() {
+			return err
+		}
+		i, err := d.Info()
+		name := path[len(dir):]
+		site := &siteFile{
+			Path:       name,
+			Size:       i.Size(),
+			pathOnDisk: path,
+			pathInForm: name,
+		}
+		res = append(res, site)
+		totalSize += i.Size()
+		return nil
+	})
+	return res, totalSize
+}
+
 // for now we store premium sites in an env variable INSTA_PREV_SITES
 // in the format:
 // site1,password1
@@ -88,19 +111,21 @@ func parsePremiumSites() {
 				continue
 			}
 			dir := filepath.Join(getPremiumSitesDir(), name)
+			files, totalSize := getSiteFilesFromDir(dir)
 			site := &Site{
 				name:           name,
 				uploadPassword: pwd,
 				dir:            dir,
 				createdOn:      time.Now(),
 				isPremium:      true,
-				totalSize:      getDirectorySize(dir),
+				totalSize:      totalSize,
+				files:          files,
 			}
 			st, err := os.Lstat(dir)
 			if err == nil {
 				site.createdOn = st.ModTime()
 			}
-			logf(ctx(), "parsePremiumsSites: name: %s, upload password: %s, totalSize: %s\n", name, pwd, formatSize(site.totalSize))
+			logf(ctx(), "parsePremiumsSites: name: %s, upload password: %s, %d files, totalSize: %s\n", name, pwd, len(site.files), formatSize(site.totalSize))
 			sites = append(sites, site)
 		}
 	}

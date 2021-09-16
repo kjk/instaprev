@@ -28,6 +28,15 @@ body {
     padding: 0;
 }
 
+td {
+    padding-right: 1em;
+}
+
+th {
+    text-align: left;
+    padding-right: 1em;
+}
+
 .nav {
     position: fixed;
     top: 1em;

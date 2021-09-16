@@ -21,7 +21,7 @@
             }
             console.log("site name:", name);
 
-            let apiURL = `https://www.instantpreview.dev/api/site-info.json?name=${name}`;
+            let apiURL = `/api/site-info.json?name=${name}`;
             Alpine.store('site', {
                 files: [],
                 isSPA: false,

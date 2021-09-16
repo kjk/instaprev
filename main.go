@@ -227,15 +227,7 @@ func handleAPISiteFiles(w http.ResponseWriter, r *http.Request) {
 		logf(ctx(), "handleAPISiteFiles: found premium site %#v\n", site)
 	}
 
-	if site == nil {
-		logf(ctx(), "handleAPISiteFiles: didn't find size. but how?\n")
-	} else {
-		logf(ctx(), "handleAPISiteFiles: did find size!\n")
-	}
-
-	logf(ctx(), "handleAPISiteFiles: site %#v\n", site)
-
-	logf(ctx(), "handleAPISiteFiles: '%s', site: %s, premium?: %v\n", r.URL.Path, site.name, site.isPremium)
+	logf(ctx(), "handleAPISiteFiles: '%s', site: %s, %d files, premium?: %v\n", r.URL.Path, site.name, len(site.files), site.isPremium)
 	v := &siteFilesResult{
 		Files: site.files,
 		IsSPA: site.isSPA,
@@ -466,6 +458,16 @@ func handleIndex(w http.ResponseWriter, r *http.Request) {
 	}
 
 	path := r.URL.Path
+
+	// this happens before resolving premium site info
+	// TODO: maybe make them more unique like
+	// /__insprevinternal/api/
+	// to minimize possibility of conflict with the site
+	if path == "/api/site-info.json" {
+		handleAPISiteFiles(w, r)
+		return
+	}
+
 	site, name := findPremiumSiteFromHost(r.Host)
 	if site != nil {
 		servePathInSite(w, r, site, path)
@@ -492,10 +494,6 @@ func handleIndex(w http.ResponseWriter, r *http.Request) {
 
 	if strings.HasPrefix(path, "/api/upload") || strings.HasPrefix(path, "/upload") {
 		handleUpload(w, r)
-		return
-	}
-	if path == "/api/site-info.json" {
-		handleAPISiteFiles(w, r)
 		return
 	}
 	if path == "/api/summary.json" {

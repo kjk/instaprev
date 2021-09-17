@@ -171,7 +171,7 @@ func isSPA(r *http.Request) bool {
 
 // this is an upload of a raw file. try to auto-detect what it is
 func handleUploadMaybeRaw(w http.ResponseWriter, r *http.Request, site *Site) {
-	name := generateRandomName()
+	name := site.name
 	tmpPath := filepath.Join(getDataDir(), name+".dat")
 	defer os.Remove(tmpPath)
 	logf(r.Context(), "handleUploadMaybeRaw: '%s', name: '%s', tmpPath: '%s'\n", r.URL, name, tmpPath)

@@ -360,12 +360,9 @@ func expireSitesLoop() {
 		muSites.Lock()
 		nExpired := 0
 		for _, site := range sites {
-			if site.isPremium {
-				// premium sites do not expire
-				continue
-			}
 			elapsed := time.Since(site.createdOn)
-			if elapsed < timeTwoHours {
+			// premium sites do not expire
+			if site.isPremium || elapsed < timeTwoHours {
 				newSites = append(newSites, site)
 			} else {
 				os.RemoveAll(site.dir)

@@ -3,6 +3,7 @@ package main
 import (
 	"archive/zip"
 	"io"
+	"math/rand"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -264,6 +265,20 @@ func findSiteFromHost(host string) *Site {
 	}
 	logf(ctx(), "findSiteFromHost: no site for host '%s', name: '%s'\n", host, name)
 	return nil
+}
+
+func generateRandomName() string {
+	const (
+		tokenSymbols = "0123456789abcdefghijklmnopqrstuvwxyz"
+		tokenLength  = 10
+	)
+	result := ""
+	for i := 0; i < tokenLength; i++ {
+		x := rand.Intn(len(tokenSymbols) - 1)
+		result = string(tokenSymbols[x]) + result
+	}
+
+	return result
 }
 
 // POST /upload

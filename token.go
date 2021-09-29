@@ -31,8 +31,8 @@ import (
 // based on https://github.com/dutchcoders/transfer.sh/server/token.go
 
 const (
-	tokenSymbols = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
-	tokenLength  = 6 // like transfer.sh
+	tokenSymbols = "0123456789abcdefghijklmnopqrstuvwxyz"
+	tokenLength  = 10
 )
 
 func generateRandomName() string {

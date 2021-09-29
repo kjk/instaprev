@@ -48,27 +48,17 @@ type Site struct {
 }
 
 func siteURL(r *http.Request, s *Site) string {
-	host := r.Host
-	if strings.HasSuffix(host, "gitpod.io") {
-		// special case when testing on gitpod.io
-		// no premium sites
-		return fmt.Sprintf("https://%s/p/%s/", host, s.name)
+	if strings.HasSuffix(r.Host, "localhost") {
+		return fmt.Sprintf("http://%s.localhost/", s.name)
 	}
-	// assume hosting where main site is under www.${hostBase}
-	// and premium sites are at ${site}.${hostBase}
-	parts := strings.Split(host, ".")
-	hostBase := host
+	// assume host is either: foo.bar.com or bar.com
+	host := r.Host
+	parts := strings.Split(r.Host, ".")
 	n := len(parts)
 	if n >= 2 {
-		hostBase = parts[n-2] + "." + parts[n-1]
+		host = parts[n-2] + "." + parts[n-1]
 	}
-	if s.isPremium {
-		return fmt.Sprintf("https://%s.%s/", s.name, hostBase)
-	}
-	if n == 2 {
-		return fmt.Sprintf("https://%s/p/%s/", hostBase, s.name)
-	}
-	return fmt.Sprintf("https://www.%s/p/%s/", hostBase, s.name)
+	return fmt.Sprintf("https://%s.%s/", s.name, host)
 }
 
 var (
@@ -88,6 +78,9 @@ func getSiteFilesFromDir(dir string) ([]*siteFile, int64) {
 			return err
 		}
 		i, err := d.Info()
+		if err != nil {
+			return err
+		}
 		name := path[len(dir)+1:]
 		site := &siteFile{
 			Path:       name,
@@ -226,54 +219,19 @@ type siteFilesResult struct {
 }
 
 // toggle SPA mode
-// GET /__instantpreviewinternal/api/toggle-spa?name=${name}
-func handleAPIToggleSpa(w http.ResponseWriter, r *http.Request) {
-	name := r.FormValue("name")
-	logf(r.Context(), "handleAPIToggleSpa: '%s', name: '%s'\n", r.URL, name)
-	if name == "" {
-		serveBadRequestError(w, r, "Error: missing 'name' argument to /__instantpreviewinternal/api/site-info.json")
-		return
-	}
-	site := findSiteByName(name)
-	if site == nil {
-		logf(r.Context(), "handleAPIToggleSpa: didn't find site for name '%s'\n", name)
-		http.NotFound(w, r)
-		return
-	}
+// GET /__instantpreviewinternal/api/toggle-spa
+func handleAPIToggleSpa(w http.ResponseWriter, r *http.Request, site *Site) {
 	site.isSPA = !site.isSPA
 
 	redirectURL := r.Header.Get("referer")
 	if redirectURL == "" {
-		if site.isPremium {
-			redirectURL = "_dir"
-		} else {
-			redirectURL = fmt.Sprintf("/p/%s/_dir", site.name)
-		}
+		redirectURL = "/_dir"
 	}
 	http.Redirect(w, r, redirectURL, http.StatusTemporaryRedirect)
 }
 
 // GET /__instantpreviewinternal/api/site-info.json?name=${name}
-func handleAPISiteFiles(w http.ResponseWriter, r *http.Request) {
-	//site, _ := findPremiumSiteFromHost(r.Host)
-	var site *Site
-	if site == nil {
-		name := r.FormValue("name")
-		logf(r.Context(), "handleAPISiteFiles: '%s', name: '%s'\n", r.URL, name)
-		if name == "" {
-			serveBadRequestError(w, r, "Error: missing 'name' argument to /__instantpreviewinternal/api/site-info.json")
-			return
-		}
-		site = findSiteByName(name)
-		if site == nil {
-			logf(r.Context(), "handleAPISiteFiles: didn't find site for name '%s'\n", name)
-			http.NotFound(w, r)
-			return
-		}
-	} else {
-		logf(ctx(), "handleAPISiteFiles: found premium site %s\n", site.name)
-	}
-
+func handleAPISiteFiles(w http.ResponseWriter, r *http.Request, site *Site) {
 	logf(ctx(), "handleAPISiteFiles: '%s', site: %s, %d files, premium?: %v\n", r.URL.Path, site.name, len(site.files), site.isPremium)
 	v := &siteFilesResult{
 		Files: site.files,
@@ -376,33 +334,8 @@ func expireSitesLoop() {
 	}
 }
 
-func findSiteByName(name string) *Site {
-	muSites.Lock()
-	defer muSites.Unlock()
-	for _, site := range sites {
-		if site.name == name {
-			return site
-		}
-	}
-	return nil
-
-}
-func findSiteByPath(path string) *Site {
-	path = strings.TrimPrefix(path, "/p/")
-	// extract name
-	if len(path) < 6 {
-		return nil
-	}
-	return findSiteByName(path[:6])
-}
-
 func servePathInSite(w http.ResponseWriter, r *http.Request, site *Site, path string) {
-	var realPath string
-	if site.isPremium {
-		realPath = path
-	} else {
-		realPath = path[9:] // strip /p/${name}
-	}
+	realPath := path
 	if realPath == "" {
 		// TODO: maybe also add query params etc.
 		newURL := path + "/"
@@ -477,17 +410,17 @@ func servePathInSite(w http.ResponseWriter, r *http.Request, site *Site, path st
 	http.ServeFile(w, r, path404)
 }
 
-// GET /p/${name}/${path}
-func handlePreview(w http.ResponseWriter, r *http.Request) {
-	logf(r.Context(), "handlePreview: '%s'\n", r.URL)
-	path := r.URL.Path
-	site := findSiteByPath(path)
-	if site == nil {
-		logf(r.Context(), "handlePreview: didn't find site\n")
-		http.NotFound(w, r)
-		return
+// return true if is main website i.e. localhost or foo.bar
+func isMain(r *http.Request) bool {
+	parts := strings.Split(r.Host, ".")
+	if len(parts) == 1 {
+		return true
 	}
-	servePathInSite(w, r, site, path)
+	if len(parts) == 2 && parts[1] == "localhost" || parts[1] == "127.0.0.1" {
+		// ${name}.localhost and therefore not
+		return false
+	}
+	return len(parts) > 2
 }
 
 func handleIndex(w http.ResponseWriter, r *http.Request) {
@@ -507,24 +440,20 @@ func handleIndex(w http.ResponseWriter, r *http.Request) {
 
 	path := r.URL.Path
 
-	// this happens before resolving premium site info
-	// to minimize possibility of conflict with the site
-	if path == "/__instantpreviewinternal/api/site-info.json" {
-		handleAPISiteFiles(w, r)
-		return
+	site := findSiteFromHost(r.Host)
+
+	if site != nil {
+		// handle those before regular files
+		if path == "/__instantpreviewinternal/api/site-info.json" {
+			handleAPISiteFiles(w, r, site)
+			return
+		}
+		if path == "/__instantpreviewinternal/api/toggle-spa" {
+			handleAPIToggleSpa(w, r, site)
+			return
+		}
 	}
-	if path == "/__instantpreviewinternal/api/summary.json" {
-		handleAPISummary(w, r)
-		return
-	}
-	if path == "/__instantpreviewinternal/api/sites.json" {
-		handleAPISites(w, r)
-		return
-	}
-	if path == "/__instantpreviewinternal/api/toggle-spa" {
-		handleAPIToggleSpa(w, r)
-		return
-	}
+
 	if path == "/__instantpreviewinternal/main.js" {
 		filePath := filepath.Join("www", "main.js")
 		http.ServeFile(w, r, filePath)
@@ -536,16 +465,25 @@ func handleIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	site, name := findPremiumSiteFromHost(r.Host)
 	if site != nil {
 		servePathInSite(w, r, site, path)
 		return
 	}
 
-	if name != "" {
+	if !isMain(r) {
 		// request for premium site but no such site available
-		filePath := filepath.Join("www", "noPremiumSite.html")
+		filePath := filepath.Join("www", "noSite.html")
 		http.ServeFile(w, r, filePath)
+		return
+	}
+
+	// those are only available on a main site
+	if path == "/__instantpreviewinternal/api/summary.json" {
+		handleAPISummary(w, r)
+		return
+	}
+	if path == "/__instantpreviewinternal/api/sites.json" {
+		handleAPISites(w, r)
 		return
 	}
 
@@ -555,29 +493,13 @@ func handleIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if strings.HasPrefix(path, "/p/") {
-		handlePreview(w, r)
-		return
-	}
-
-	if strings.HasPrefix(path, "/api/upload") || strings.HasPrefix(path, "/upload") {
-		handleUpload(w, r)
-		return
-	}
-
-	if path == "/ping" {
+	if path == "/ping" || path == "/ping.txt" {
 		servePlainText(w, r, "pong")
 		return
 	}
+
 	if path == "/sites" {
 		handleSites(w, r)
-		return
-	}
-
-	redirectURL := siteMaybeRedirectForPath(r)
-	if redirectURL != "" {
-		logf(r.Context(), "httpIndex: redirectng '%s' => '%s'\n", path, redirectURL)
-		http.Redirect(w, r, redirectURL, http.StatusTemporaryRedirect)
 		return
 	}
 
@@ -601,34 +523,6 @@ func handleIndex(w http.ResponseWriter, r *http.Request) {
 
 	logf(r.Context(), "handleIndex: '%s' not found\n", r.URL)
 	http.NotFound(w, r)
-}
-
-// if uploaded files use absolute urls, they'll have incorrect paths on
-// our server
-// we try to deduce from referer which site this request was meant to
-// this builds the url on our site or "" if nothing is matching
-func siteMaybeRedirectForPath(r *http.Request) string {
-	// referer is a full URL https://${host}${path}
-	// extract ${path}
-	referer := r.Header.Get("referer")
-	if referer == "" {
-		return ""
-	}
-	logf(r.Context(), "siteRedirectForPath: '%s', host: '%s'\n", r.URL, r.Host)
-	idx := strings.Index(referer, r.Host)
-	if idx == -1 {
-		return ""
-	}
-	path := referer[idx+len(r.Host):]
-	logf(r.Context(), "siteRedirectForPath: path from referer: '%s', host: '%s'\n", path, r.Host)
-	site := findSiteByPath(path)
-	if site == nil {
-		return ""
-	}
-	// TODO: add query params and hash
-	newURL := "/p/" + site.name + r.URL.Path
-	logf(r.Context(), "siteRedirectForPath: path: '%s', newURL: '%s', r.URL.RawQuery: '%s'\n", path, newURL, r.URL.RawQuery)
-	return newURL
 }
 
 func doRunServer() {

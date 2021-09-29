@@ -7,25 +7,12 @@
     <script>
         //console.log("listSiteFiles.html, window.location:", window.location);
 
-        let name = "";
-        let isPremium = false;
         async function initAlpine() {
             console.log("initAlpine");
-            let uri = window.location;
-            let parts = window.location.hostname.split(".");
-            name = uri.pathname.substr(3, 6); // extract /p/${name}/
-            if ((parts.length == 3) && parts[0] != "www") {
-                // "foo.instantpreview.dev" => "foo"
-                name = parts[0];
-                isPremium = true;
-            }
-            console.log("site name:", name);
-
-            let apiURL = `/__instantpreviewinternal/api/site-info.json?name=${name}`;
+            let apiURL = `/__instantpreviewinternal/api/site-info.json`;
             Alpine.store('site', {
                 files: [],
                 isSPA: false,
-                name: name,
                 missingFilePath: window.location.pathname,
                 async init() {
                     //console.log("starting fetch:", apiURL);
@@ -79,16 +66,11 @@
         }
 
         function fileLink(file) {
-            if (isPremium) {
-                return `<a href="${file.Path}">${file.Path}</a>`;
-            }
-            let baseURL = `/p/${name}/`;
-            let fullURL = baseURL + file.Path;
-            return `<a href="${fullURL}">${file.Path}</a>`;
+            return `<a href="${file.Path}">${file.Path}</a>`;
         }
 
         function toggleSpaLink() {
-            let uri = `/__instantpreviewinternal/api/toggle-spa?name=${name}`;
+            let uri = `/__instantpreviewinternal/api/toggle-spa`;
             return `&nbsp;<a href="${uri}">toggle SPA</a>`;
         }
 

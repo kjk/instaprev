@@ -2,8 +2,6 @@ package main
 
 import (
 	"archive/zip"
-	"bytes"
-	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -246,51 +244,26 @@ func handleUploadMaybeRaw(w http.ResponseWriter, r *http.Request, site *Site) {
 	}
 	muSites.Unlock()
 
-	// TODO: use siteURL() ?
-	var uri string
-	if site.isPremium {
-		uri = fmt.Sprintf("https://%s/", r.Host)
-	} else {
-		if len(site.files) > 1 {
-			uri = fmt.Sprintf("https://%s/p/%s/", r.Host, name)
-		} else {
-			f := site.files[0]
-			uri = fmt.Sprintf("https://%s/p/%s/%s", r.Host, name, f.Path)
-		}
-
+	uri := siteURL(r, site)
+	if len(site.files) == 1 {
+		uri += site.files[0].Path
 	}
-	rsp := bytes.NewReader([]byte(uri))
-	http.ServeContent(w, r, "result.txt", time.Now(), rsp)
+	servePlainText(w, r, uri)
 }
 
-// returns "" if not a premium name or no premium site with that name
-// and the name "suma.instantpreview.dev" => "suma"
-func findPremiumSiteFromHost(host string) (*Site, string) {
-	if strings.HasSuffix(host, "gitpod.io") {
-		// when testing on .gitpod.io, pretend it's resolving to
-		// www.instantpreview.dev
-		logf(ctx(), "findPremiumSiteFromHost: on gitpod.io so assuming base\n")
-		return nil, ""
-	}
-	parts := strings.Split(host, ".")
-	if len(parts) != 3 {
-		logf(ctx(), "findPremiumSiteFromHost: invalid host '%s'\n", host)
-		return nil, ""
-	}
-	name := strings.ToLower(parts[0])
-	if name == "www" {
-		return nil, ""
-	}
+func findSiteFromHost(host string) *Site {
+	name := strings.Split(host, ".")[0]
+	name = strings.ToLower(name)
 	muSites.Lock()
 	defer muSites.Unlock()
 	for _, site := range sites {
 		if site.name == name {
-			logf(ctx(), "findPremiumSiteFromHost: found site for host '%s', name: '%s'\n", host, site.name)
-			return site, name
+			logf(ctx(), "findSiteFromHost: found site for host '%s', name: '%s'\n", host, site.name)
+			return site
 		}
 	}
-	logf(ctx(), "findPremiumSiteFromHost: no site for host '%s', name: '%s'\n", host, name)
-	return nil, name
+	logf(ctx(), "findSiteFromHost: no site for host '%s', name: '%s'\n", host, name)
+	return nil
 }
 
 // POST /upload
@@ -298,20 +271,17 @@ func findPremiumSiteFromHost(host string) (*Site, string) {
 func handleUpload(w http.ResponseWriter, r *http.Request) {
 	ct := r.Header.Get("content-type")
 
-	findPremimOrCreateNonPremium := func() *Site {
-		site, domainName := findPremiumSiteFromHost(r.Host)
+	findOrCreateSite := func() *Site {
+		site := findSiteFromHost(r.Host)
 		if site == nil {
-			if domainName != "" {
-				serveErrorStatus(w, r, http.StatusBadRequest, "Error: can't upload to '%s'. Use https://www.instantpreview.dev or double-check name of premium site\n", r.Host)
-				return nil
-			}
-			// generate new, temporary site
+			// create new, temporary site
 			name := generateRandomName()
 			site = &Site{
 				name:      name,
 				dir:       filepath.Join(getDataDir(), name),
 				createdOn: time.Now(),
 				isSPA:     isSPA(r),
+				isPremium: false,
 			}
 			return site
 		}
@@ -322,7 +292,7 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 		return site
 	}
 
-	site := findPremimOrCreateNonPremium()
+	site := findOrCreateSite()
 	if site == nil {
 		return
 	}
@@ -439,17 +409,9 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 	}
 	muSites.Unlock()
 
-	var uri string
-	if site.isPremium {
-		uri = fmt.Sprintf("https://%s/", r.Host)
-	} else {
-		if len(site.files) > 1 {
-			uri = fmt.Sprintf("https://%s/p/%s/", r.Host, site.name)
-		} else {
-			f := site.files[0]
-			uri = fmt.Sprintf("https://%s/p/%s/%s", r.Host, site.name, f.Path)
-		}
+	uri := siteURL(r, site)
+	if len(site.files) == 1 {
+		uri += site.files[0].Path
 	}
-	rsp := bytes.NewReader([]byte(uri))
-	http.ServeContent(w, r, "result.txt", time.Now(), rsp)
+	servePlainText(w, r, uri)
 }

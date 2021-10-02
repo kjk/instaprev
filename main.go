@@ -377,6 +377,10 @@ func servePathInSite(w http.ResponseWriter, r *http.Request, site *Site, path st
 
 	logf(r.Context(), "servePathInSite: path: '%s', rest: '%s', toFind: '%s', hasIndex: %v, has404: %v\n", path, realPath, toFind, fileIndex != nil, file404 != nil)
 	toFind2 := toFind + ".html" // also serve clean urls with ".html" stripped off
+	if strings.HasSuffix(toFind, "/") {
+		// or index.html if this "foo/" directory
+		toFind2 = toFind + "index.html"
+	}
 	findFileByPath := func() *siteFile {
 		for _, f := range site.files {
 			if f.Path == toFind {

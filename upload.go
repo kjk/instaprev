@@ -255,6 +255,9 @@ func handleUploadMaybeRaw(w http.ResponseWriter, r *http.Request, site *Site) {
 func findSiteFromHost(host string) *Site {
 	name := strings.Split(host, ".")[0]
 	name = strings.ToLower(name)
+	if name == "www" {
+		return nil
+	}
 	muSites.Lock()
 	defer muSites.Unlock()
 	for _, site := range sites {

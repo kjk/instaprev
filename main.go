@@ -101,8 +101,10 @@ func getSiteFilesFromDir(dir string) ([]*siteFile, int64) {
 // site2,password2
 func parsePremiumSites() {
 	logf(ctx(), "parsePremiumsSites:\n")
-	parseSites := func(s string) {
-		s = normalizeNewlines(s)
+
+	parseSites := func(d []byte) {
+		d = normalizeNewlines(d)
+		s := string(d)
 		lines := strings.Split(s, "\n")
 		for _, l := range lines {
 			l = strings.TrimSpace(l)
@@ -141,12 +143,13 @@ func parsePremiumSites() {
 			sites = append(sites, site)
 		}
 	}
-	parseSites(os.Getenv("INSTA_PREV_SITES"))
+
+	parseSites([]byte(os.Getenv("INSTA_PREV_SITES")))
 	// this is on render.com
 	d, err := os.ReadFile("/etc/secrets/premium_sites.txt")
 	if err == nil {
 		logf(ctx(), "parsePremiumSites: parsing from /etc/secrets/premium_sites.txt\n")
-		parseSites(string(d))
+		parseSites(d)
 	}
 	logf(ctx(), "parsePremiumSites: loaded %d sites\n", len(sites))
 }

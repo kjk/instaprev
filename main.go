@@ -588,28 +588,13 @@ func doRunServer() {
 	}
 }
 
-func deployToRender() {
-	deployURL := os.Getenv("INSTANT_PREVIEW_DEPLOY_HOOK")
-	panicIf(deployURL == "", "needs env variable INSTANT_PREVIEW_DEPLOY_HOOK")
-	d, err := httpGet(deployURL)
-	must(err)
-	logf(ctx(), "%s\n", string(d))
-}
-
 func main() {
 	var (
-		flgRun    bool
-		flgDeploy bool
+		flgRun bool
 	)
 	{
 		flag.BoolVar(&flgRun, "run", false, "run the server")
-		flag.BoolVar(&flgDeploy, "deploy", false, "deploy to render.com")
 		flag.Parse()
-	}
-
-	if flgDeploy {
-		deployToRender()
-		return
 	}
 
 	if flgRun {

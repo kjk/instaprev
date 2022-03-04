@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/kjk/common/u"
 )
 
 const (
@@ -59,6 +61,7 @@ func canonicalPath(path string) string {
 func unpackZipFiles(zipFiles []string, site *Site) error {
 	var lastErr error
 
+	timeStart := time.Now()
 	dir := site.dir
 	nUnpacked := 0
 	for _, zipFile := range zipFiles {
@@ -152,7 +155,7 @@ func unpackZipFiles(zipFiles []string, site *Site) error {
 			site.totalSize += int64(f.UncompressedSize64)
 		}
 		f.Close()
-		logf(ctx(), "unpackZipFiles: unpacked %d files\n", len(fileNames))
+		logf(ctx(), "unpackZipFiles: unpacked %d files, total size: %s, in %s\n", len(fileNames), u.FormatSize(site.totalSize), time.Since(timeStart))
 	}
 
 	return lastErr
@@ -172,26 +175,40 @@ func isSPA(r *http.Request) bool {
 func handleUploadMaybeRaw(w http.ResponseWriter, r *http.Request, site *Site) {
 	name := site.name
 	tmpPath := filepath.Join(getDataDir(), name+".dat")
-	defer os.Remove(tmpPath)
-	logf(r.Context(), "handleUploadMaybeRaw: '%s', name: '%s', tmpPath: '%s'\n", r.URL, name, tmpPath)
+	ctx := r.Context()
+	defer func() {
+		err := os.Remove(tmpPath)
+		if err != nil {
+			logf(ctx, "handleUploadMaybeRaw: failed to remove '%s', error: '%s'\n", tmpPath, err)
+		} else {
+			logf(ctx, "handleUploadMaybeRaw: removed '%s'\n", tmpPath)
+		}
+	}()
+	logf(ctx, "handleUploadMaybeRaw: '%s', name: '%s', tmpPath: '%s'\n", r.URL, name, tmpPath)
 
-	f, err := os.Create(tmpPath)
-	if err != nil {
-		logf(r.Context(), "handleUploadMaybeRaw: os.Create('%s') failed with '%s'\n", tmpPath, err)
-		http.NotFound(w, r)
-		return
-	}
-	_, err = io.Copy(f, r.Body)
-	if err != nil {
-		logf(r.Context(), "handleUploadMaybeRaw: io.Copy() for '%s' failed with '%s'\n", tmpPath, err)
-		http.NotFound(w, r)
-		return
-	}
-	err = f.Close()
-	if err != nil {
-		logf(r.Context(), "handleUploadMaybeRaw: f.Close() failed with '%s'\n", err)
-		http.NotFound(w, r)
-		return
+	{
+		timeStart := time.Now()
+
+		f, err := os.Create(tmpPath)
+		if err != nil {
+			logf(ctx, "handleUploadMaybeRaw: os.Create('%s') failed with '%s'\n", tmpPath, err)
+			http.NotFound(w, r)
+			return
+		}
+		_, err = io.Copy(f, r.Body)
+		if err != nil {
+			logf(ctx, "handleUploadMaybeRaw: io.Copy() for '%s' failed with '%s'\n", tmpPath, err)
+			http.NotFound(w, r)
+			return
+		}
+		err = f.Close()
+		if err != nil {
+			logf(ctx, "handleUploadMaybeRaw: f.Close() failed with '%s'\n", err)
+			http.NotFound(w, r)
+			return
+		}
+		r.Body.Close()
+		logf(ctx, "Wrote '%s' in %s\n", tmpPath, time.Since(timeStart))
 	}
 
 	path := r.URL.Path
@@ -209,7 +226,7 @@ func handleUploadMaybeRaw(w http.ResponseWriter, r *http.Request, site *Site) {
 		if !isBlacklistedFileType(path) {
 			path = canonicalPath(path)
 			pathOnDisk := filepath.Join(getDataDir(), name, path)
-			err = os.MkdirAll(filepath.Dir(pathOnDisk), 0755)
+			err := os.MkdirAll(filepath.Dir(pathOnDisk), 0755)
 			if err != nil {
 				serveInternalError(w, r, "Error: handleUploadMaybeRaw: os.MkdirAll('%s') failed with '%s'", filepath.Dir(pathOnDisk), err)
 				return
@@ -288,7 +305,8 @@ func generateRandomName() string {
 // POST /api/upload
 func handleUpload(w http.ResponseWriter, r *http.Request) {
 	ct := r.Header.Get("content-type")
-	logf(ctx(), "handleUpload, ct='%s'\n", ct)
+	ctx := r.Context()
+	logf(ctx, "handleUpload, ct='%s'\n", ct)
 
 	findOrCreateSite := func() *Site {
 		site := findSiteFromHost(r.Host)
@@ -302,14 +320,14 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 				isSPA:     isSPA(r),
 				isPremium: false,
 			}
-			logf(ctx(), "findOrCreateSite: created site with name '%s'\n", name)
+			logf(ctx, "findOrCreateSite: created site with name '%s'\n", name)
 			return site
 		}
 		if !strings.Contains(r.URL.RawQuery, site.uploadPassword) {
 			serveErrorStatus(w, r, http.StatusBadRequest, "Error: invalid password for premium site '%s'\n", r.Host)
 			return nil
 		}
-		logf(ctx(), "findOrCreateSite: found existing site '%s'\n", site.name)
+		logf(ctx, "findOrCreateSite: found existing site '%s'\n", site.name)
 		return site
 	}
 
@@ -321,9 +339,9 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 	if site.isPremium {
 		// remove existing files for premium site
 		if err := os.RemoveAll(site.dir); err != nil {
-			logf(ctx(), "unpackZipFiles: site: '%s', os.RemoveAll('%s') failed with '%s'\n", site.name, site.dir, err)
+			logf(ctx, "unpackZipFiles: site: '%s', os.RemoveAll('%s') failed with '%s'\n", site.name, site.dir, err)
 		} else {
-			logf(ctx(), "unpackZipFiles: site: '%s', os.RemoveAll('%s')\n", site.name, site.dir)
+			logf(ctx, "unpackZipFiles: site: '%s', os.RemoveAll('%s')\n", site.name, site.dir)
 		}
 		site.files = nil
 		site.totalSize = 0
@@ -333,7 +351,7 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 		handleUploadMaybeRaw(w, r, site)
 		return
 	}
-	logf(r.Context(), "handleUpload: '%s', Content-Type: '%s', name: '%s', dir: '%s', premium?: %v\n", r.URL, ct, site.name, site.dir, site.isPremium)
+	logf(ctx, "handleUpload: '%s', Content-Type: '%s', name: '%s', dir: '%s', premium?: %v\n", r.URL, ct, site.name, site.dir, site.isPremium)
 	err := r.ParseMultipartForm(maxSize20Mb)
 	if err != nil {
 		serveBadRequestError(w, r, "Error: handleUpload: r.ParseMultipartForm() failed with '%s'\n", err)
@@ -413,9 +431,9 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 		}
 		fr.Close()
 		totalSize += fh.Size
-		logf(r.Context(), "handleUpload: file '%s' (canonical: '%s'), name: '%s' of size %s saved as '%s'\n", file.pathInForm, file.Path, fh.Filename, formatSize(fh.Size), pathOnDisk)
+		logf(ctx, "handleUpload: file '%s' (canonical: '%s'), name: '%s' of size %s saved as '%s'\n", file.pathInForm, file.Path, fh.Filename, formatSize(fh.Size), pathOnDisk)
 	}
-	logf(r.Context(), "handleUpload: %d files of total size %s\n", len(files), formatSize(totalSize))
+	logf(ctx, "handleUpload: %d files of total size %s\n", len(files), formatSize(totalSize))
 
 	site.files = files
 	site.totalSize = totalSize

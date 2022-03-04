@@ -383,6 +383,9 @@ func servePathInSite(w http.ResponseWriter, r *http.Request, site *Site, path st
 	if strings.HasSuffix(toFind, "/") {
 		// or index.html if this "foo/" directory
 		toFind2 = toFind + "index.html"
+	} else {
+		// match file "foo/index.html" for "foo" url
+		toFind2 = toFind + "/index.html"
 	}
 	findFileByPath := func() *siteFile {
 		for _, f := range site.files {

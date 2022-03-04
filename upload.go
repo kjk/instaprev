@@ -288,6 +288,7 @@ func generateRandomName() string {
 // POST /api/upload
 func handleUpload(w http.ResponseWriter, r *http.Request) {
 	ct := r.Header.Get("content-type")
+	logf(ctx(), "handleUpload, ct='%s'\n", ct)
 
 	findOrCreateSite := func() *Site {
 		site := findSiteFromHost(r.Host)
@@ -301,12 +302,14 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 				isSPA:     isSPA(r),
 				isPremium: false,
 			}
+			logf(ctx(), "findOrCreateSite: created site with name '%s'\n", name)
 			return site
 		}
 		if !strings.Contains(r.URL.RawQuery, site.uploadPassword) {
 			serveErrorStatus(w, r, http.StatusBadRequest, "Error: invalid password for premium site '%s'\n", r.Host)
 			return nil
 		}
+		logf(ctx(), "findOrCreateSite: found existing site '%s'\n", site.name)
 		return site
 	}
 
